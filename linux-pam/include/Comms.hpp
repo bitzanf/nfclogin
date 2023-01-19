@@ -31,7 +31,15 @@ concept is_byte_iterator = requires(It it) {
 
 template <typename Predicate, typename... Args>
 requires std::invocable<Predicate, Args...>
-bool await(unsigned int timeout_ms, Predicate pred, Args... args);
+bool await(unsigned int timeout_ms, Predicate pred, Args&&... args) {
+    unsigned int delay = 0;
+    while (!pred(args...) && delay < timeout_ms) {
+        usleep(1e5);
+        delay += 100;
+    }
+    
+    return delay < timeout_ms;
+}
 
 template <typename Predicate, typename... Args>
 requires std::invocable<Predicate, Args...>
@@ -124,8 +132,8 @@ private:
 
     void launchThread();
     void commThreadProc(std::stop_token stop);
-    bool commThreadCheckMSG(bool *ready);
-    void sendHeader();
+    bool commThreadCheckMSG();
+    void sendHeader(uint16_t len);
     void sendChecksum();
     void sendACKorNAK(bool success);
     bool waitForACK();

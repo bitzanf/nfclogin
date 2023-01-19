@@ -36,19 +36,6 @@ uint16_t CRC16(const It begin, const It end) {
     return crc;
 }
 
-template <typename Predicate, typename... Args>
-requires std::invocable<Predicate, Args...>
-bool await(unsigned int timeout_ms, Predicate pred, Args... args) {
-    unsigned int delay = 0;
-    while (!pred(args...) && delay < timeout_ms) {
-        usleep(1e5);
-        delay += 100;
-    }
-    
-    return delay < timeout_ms;
-}
-
-
 
 NFCAdapter::NFCAdapter(const char* ttyPath, speed_t baudrate) : ttyAdapter(ttyPath, baudrate) {
     launchThread();
@@ -59,8 +46,7 @@ NFCAdapter::NFCAdapter(int fd) : ttyAdapter(fd) {
 }
 
 NFCAdapter::~NFCAdapter() {
-    commThread.request_stop();
-    commThread.join();
+    if (commThread.request_stop()) commThread.join();
 }
 
 void NFCAdapter::launchThread() {
@@ -73,24 +59,23 @@ void NFCAdapter::commThreadProc(std::stop_token stop) {
             if (stop.stop_requested()) return;
 
             if (!sendAvailable) {
-                sendHeader();
+                outPktID++;
                 std::string b64data = base64_encode(outBfr);
+                sendHeader(b64data.length());
                 ttyAdapter.send((uint8_t*)b64data.data(), b64data.size());
                 sendChecksum();
                 if (!waitForACK()) {
-                    if (sendRetry++ < maxSendRetryCount) throw runtime_error{"Too many errors sending message"};
+                    outPktID--;
+                    if (sendRetry++ > maxSendRetryCount) throw runtime_error{"Too many errors sending message"};
                     else continue;
-                };
+                } else sendRetry = 0;
                 outPktType = (uint8_t)PacketType::PKT_NONE;
                 sendAvailable = true;
             }
 
-            bool msgReady;
-            //await(std::bind(&NFCAdapter::commThreadCheckMSG, this, std::placeholders::_1), &msgReady);
-            commThreadCheckMSG(&msgReady);
-            if (msgReady) processMSG();
+            if (commThreadCheckMSG()) processMSG();
 
-            usleep(1e5);
+            usleep(1e4);
         }
     } catch (std::exception &e) {
         std::cerr << " COMM THREAD ERROR: " << e.what() << std::endl;
@@ -98,12 +83,11 @@ void NFCAdapter::commThreadProc(std::stop_token stop) {
     }
 }
 
-bool NFCAdapter::commThreadCheckMSG(bool *ready) {
+bool NFCAdapter::commThreadCheckMSG() {
     uint8_t byte;
     if (ttyAdapter.recv(&byte)) {
         //SOH
         if (byte == 0x01) {
-            *ready = true;
             return true;
         }
         //PING
@@ -115,12 +99,12 @@ bool NFCAdapter::commThreadCheckMSG(bool *ready) {
     return false;
 }
 
-void NFCAdapter::sendHeader() {
+void NFCAdapter::sendHeader(uint16_t len) {
     ttyAdapter.send(0x01);  //SOH
     ttyAdapter.send(outPktID);
     ttyAdapter.send(outPktType);
-    ttyAdapter.send((outBfr.size() >> 8) & 0xFF);
-    ttyAdapter.send(outBfr.size() & 0xFF);
+    ttyAdapter.send((len >> 8) & 0xFF);
+    ttyAdapter.send(len & 0xFF);
     ttyAdapter.send(0x02);  //STX
 }
 
@@ -150,7 +134,7 @@ bool NFCAdapter::waitForACK() {
             byte = getU8(1000);
             ID = getU8(1000);
             iters++;
-            usleep(1e5);
+            usleep(2e5);
         } while (byte != 0x06 && byte != 0x15 && iters < maxReadsDumped);
     } catch (runtime_error) {
         return false;
