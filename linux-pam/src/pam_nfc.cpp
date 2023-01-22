@@ -41,13 +41,6 @@ auto getSplitIter(vector<uint8_t>& data) {
     );
 }
 
-bool syncReader(NFCAdapter* nfc, vector<uint8_t>* data) {
-    auto type = nfc->getResponse(*data);
-    if (type == NFCAdapter::PacketType::DATAPACKET) return true;
-    else if (type == NFCAdapter::PacketType::PKT_NONE) return false;
-    else throw runtime_error{"Incorrect packet type!"};
-}
-
 int doAuth(NFCAdapter& nfc, CryptoLoginManager& mngr, const string& fp) {
     vector<uint8_t> msg, response;
     auto dev = mngr.getDevice(fp);
@@ -57,16 +50,14 @@ int doAuth(NFCAdapter& nfc, CryptoLoginManager& mngr, const string& fp) {
     msg.assign({'a', 'u', 't', 'h', '|'});
     msg.insert(msg.end(), secret.begin(), secret.end());
 
-    while (!nfc.sendMessage(msg, NFCAdapter::PacketType::DATAPACKET)) usleep(5e4);
-    try {
-        r = await(&syncReader, &nfc, &response);
-    } catch (runtime_error &e) {
-        std::cerr << "Auth error: " << e.what() << '\n';
-        return PAM_AUTH_ERR;
-    }
 
-    if (dev.checkSecret(vector<uint8_t>(getSplitIter(response)+1, response.end()))) return PAM_SUCCESS;
-    else return PAM_PERM_DENIED;
+    if (!nfc.sendMessage(msg, NFCAdapter::PacketType::DATAPACKET)) return PAM_AUTH_ERR;
+    auto pt = nfc.getResponse(response);
+    
+    if (pt == NFCAdapter::PacketType::DATAPACKET) {
+        if (dev.checkSecret(vector<uint8_t>(getSplitIter(response)+1, response.end()))) return PAM_SUCCESS;
+        else return PAM_PERM_DENIED;
+    } else return PAM_AUTH_ERR;
 }
 
 PAM_EXTERN "C" int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv) {
@@ -80,48 +71,51 @@ PAM_EXTERN "C" int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, con
 }
 
 void pam_nfc_service(PamConfig* conf, ResultInfo* res) {
-    CryptoLoginManager mngr;
-    NFCAdapter nfc(conf->ttyPath.c_str(), conf->ttySpeed);
-    string fp = "fp|" + mngr.getFingerprint();
-    vector<uint8_t> response;
-    bool r;
+    try {
+        CryptoLoginManager mngr;
+        NFCAdapter nfc(conf->ttyPath.c_str(), conf->ttySpeed, conf->timeout);
+        string fp = "fp|" + mngr.getFingerprint();
+        vector<uint8_t> response;
 
-    if (!nfc.ping()) {
-        res->result = PAM_IGNORE;
-        res->finished = true;
-        return;
-    }
-
-    auto start = steady_clock::now();
-    for ever {
-        auto loopStart = steady_clock::now();
-        while(!nfc.sendMessage(fp.begin(), fp.end(), NFCAdapter::PacketType::DATAPACKET)) usleep(5e4);
-
-        try {
-            r = await(500, &syncReader, &nfc, &response);
-        } catch (runtime_error &e) {
-            std::cerr << "Auth error: " << e.what() << '\n';
-            res->result = PAM_AUTH_ERR;
-            res->finished = true;
-            return;
-        }
-
-        if (r) {
-            res->result = doAuth(nfc, mngr, string(getSplitIter(response)+1, response.end()));
-            res->finished = true;
-            return;
-        }
-
-        auto now = steady_clock::now();
-        if (duration_cast<seconds>(now - start).count() > 20) {
+        if (!nfc.ping()) {
             res->result = PAM_IGNORE;
             res->finished = true;
             return;
         }
 
-        //vysílá se 1x za sekundu
-        auto remainder = 1e6 - duration_cast<microseconds>(now - loopStart).count();
-        if (remainder > 0) usleep(remainder);
+        auto start = steady_clock::now();
+        for ever {
+            auto loopStart = steady_clock::now();
+            if (!nfc.sendMessage(fp.begin(), fp.end(), NFCAdapter::PacketType::DATAPACKET)) {
+                res->result = PAM_AUTH_ERR;
+                res->finished = true;
+                return;
+            }
+
+            auto pt = nfc.getResponse(response);
+
+            if (pt == NFCAdapter::PacketType::DATAPACKET) {
+                res->result = doAuth(nfc, mngr, string(getSplitIter(response)+1, response.end()));
+                res->finished = true;
+                return;
+            }
+
+            auto now = steady_clock::now();
+            if (duration_cast<seconds>(now - start).count() > 20) {
+                res->result = PAM_IGNORE;
+                res->finished = true;
+                return;
+            }
+
+            //vysílá se 1x za sekundu
+            auto remainder = 1e6 - duration_cast<microseconds>(now - loopStart).count();
+            if (remainder > 0) usleep(remainder);
+        }
+    } catch (std::exception &e) {
+        std::cerr << " PAM_NFC ERROR: " << e.what() << std::endl;
+        res->result = PAM_AUTH_ERR;
+        res->finished = true;
+        return;
     }
 }
 

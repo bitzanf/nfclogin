@@ -9,6 +9,7 @@
 #include <cstring>
 
 using namespace osslUtils;
+using std::runtime_error;
 using std::find_if;
 using std::string;
 using std::vector;
@@ -53,18 +54,14 @@ void Register(UserConf& uc, NFCAdapter &nfc) {
     nfc.sendMessage(temp, NFCAdapter::PacketType::REGISTER);
     temp.clear();
 
-    int recvTryCount = 0;
-    do {
-        respType = nfc.getResponse(temp);
-        if (recvTryCount++ > 8) throw std::runtime_error{"Error communicating with device"};
-        usleep(1e5);
-    } while (respType == NFCAdapter::PacketType::PKT_NONE);
+    respType = nfc.getResponse(temp);
+    if (respType != NFCAdapter::PacketType::REGISTER) throw runtime_error{"Incorrect packet type"};
     
     auto split = find_if(temp.begin(), temp.end(), [](uint8_t val){ return val == '|'; });
     bool res = uc.newDevice(string(temp.begin(), split), string(split+1, temp.end()));
 
-    if (res) std::cout << "Registration successful\n";
-    else std::cout << "Registration failed\n";
+    if (res) cout << "Registration successful\n";
+    else cout << "Registration failed\n";
 }
 
 void Remove(UserConf& uc, NFCAdapter &nfc, char* fp) {
@@ -73,19 +70,15 @@ void Remove(UserConf& uc, NFCAdapter &nfc, char* fp) {
 
     if (fp == nullptr) {
         const string& ucfp = uc.getFingerprint();
-        const string header = "FP|";
+        const string header = "fp|";
         vector<uint8_t> outMsgBfr;
         outMsgBfr.assign(header.begin(), header.end());
         outMsgBfr.insert(outMsgBfr.end(), ucfp.begin(), ucfp.end());
 
         nfc.sendMessage(outMsgBfr, NFCAdapter::PacketType::DATAPACKET);
 
-        int recvTryCount = 0;
-        do {
-            respType = nfc.getResponse(sFP);
-            if (recvTryCount++ > 8) throw std::runtime_error{"Error communicating with device"};
-            usleep(1e5);
-        } while (respType == NFCAdapter::PacketType::PKT_NONE);
+        respType = nfc.getResponse(sFP);
+        if (respType != NFCAdapter::PacketType::DATAPACKET) throw runtime_error{"Incorrect apcket type"};
 
         sFP.erase(0, 3);
     } else sFP.assign(fp);
@@ -125,7 +118,7 @@ int main_u(int argc, char** argv) {
     }
 
     UserConf uc;
-    NFCAdapter nfc(ttyPath.c_str(), ttyBaud);
+    NFCAdapter nfc(ttyPath.c_str(), ttyBaud, 50 /* *0,1s => 5s */);
 
     if (!strcmp("list", argv[optidx])) {
         cout << "Listing registered devices...\n";

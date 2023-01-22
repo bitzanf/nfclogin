@@ -18,216 +18,9 @@ using std::system_error;
 #define SYSERR(msg) system_error(errno, std::generic_category(), msg)
 #define SENDERR SYSERR("Error sending data")
 #define RECVERR SYSERR("Error reveiving data")
+#define TIMEOUT runtime_error("Timed out waiting for response")
 
-template <typename It>
-requires is_byte_iterator<It>
-uint16_t CRC16(const It begin, const It end) {
-    constexpr uint16_t CRC16POLYNOMIAL = 0x1021;
-    uint16_t crc = 0;
-
-    for (It i = begin; i < end; i++) {
-        crc ^= *i << 8;
-        for (int i = 0; i < 8; i++) {
-            if (crc & 0x8000) crc = (crc << 1) ^ CRC16POLYNOMIAL;
-            else crc <<= 1;
-        }
-    }
-
-    return crc;
-}
-
-
-NFCAdapter::NFCAdapter(const char* ttyPath, speed_t baudrate) : ttyAdapter(ttyPath, baudrate) {
-    launchThread();
-}
-
-NFCAdapter::NFCAdapter(int fd) : ttyAdapter(fd) {
-    launchThread();
-}
-
-NFCAdapter::~NFCAdapter() {
-    if (commThread.request_stop()) commThread.join();
-}
-
-void NFCAdapter::launchThread() {
-    commThread = std::jthread(std::bind(&NFCAdapter::commThreadProc, this, std::placeholders::_1));
-}
-
-void NFCAdapter::commThreadProc(std::stop_token stop) {
-    try {
-        for ever {
-            if (stop.stop_requested()) return;
-
-            if (!sendAvailable) {
-                outPktID++;
-                std::string b64data = base64_encode(outBfr);
-                sendHeader(b64data.length());
-                ttyAdapter.send((uint8_t*)b64data.data(), b64data.size());
-                sendChecksum();
-                if (!waitForACK()) {
-                    outPktID--;
-                    if (sendRetry++ > maxSendRetryCount) throw runtime_error{"Too many errors sending message"};
-                    else continue;
-                } else sendRetry = 0;
-                outPktType = (uint8_t)PacketType::PKT_NONE;
-                sendAvailable = true;
-            }
-
-            if (commThreadCheckMSG()) processMSG();
-
-            usleep(1e4);
-        }
-    } catch (std::exception &e) {
-        std::cerr << " COMM THREAD ERROR: " << e.what() << std::endl;
-        exit(-1);
-    }
-}
-
-bool NFCAdapter::commThreadCheckMSG() {
-    uint8_t byte;
-    if (ttyAdapter.recv(&byte)) {
-        //SOH
-        if (byte == 0x01) {
-            return true;
-        }
-        //PING
-        if (byte == 0x05) {
-            ttyAdapter.send(0x06);
-            return false;
-        }
-    }
-    return false;
-}
-
-void NFCAdapter::sendHeader(uint16_t len) {
-    ttyAdapter.send(0x01);  //SOH
-    ttyAdapter.send(outPktID);
-    ttyAdapter.send(outPktType);
-    ttyAdapter.send((len >> 8) & 0xFF);
-    ttyAdapter.send(len & 0xFF);
-    ttyAdapter.send(0x02);  //STX
-}
-
-void NFCAdapter::sendChecksum() {
-    uint16_t crc = CRC16(outBfr.begin(), outBfr.end());
-    
-    ttyAdapter.send(0x03);  //ETX
-    ttyAdapter.send((crc >> 8) & 0xFF);
-    ttyAdapter.send(crc & 0xFF);
-    ttyAdapter.send(0x04);  //EOT
-}
-
-void NFCAdapter::sendACKorNAK(bool success) {
-    ttyAdapter.send(success ? 0x06 : 0x15);
-    ttyAdapter.send(inPktID);
-}
-
-bool NFCAdapter::ping() {
-    return true;
-}
-
-bool NFCAdapter::waitForACK() {
-    uint8_t byte, ID;
-    int iters = 0;
-    try {
-        do {
-            byte = getU8(1000);
-            ID = getU8(1000);
-            iters++;
-            usleep(2e5);
-        } while (byte != 0x06 && byte != 0x15 && iters < maxReadsDumped);
-    } catch (runtime_error) {
-        return false;
-    }
-
-    return byte == 0x06 && ID == outPktID;
-}
-
-bool NFCAdapter::processMSG() {
-    std::string b64data;
-
-    uint8_t ID = getU8();
-    inPktType = getU8();
-    uint16_t LEN = getU16();
-    if (ID == inPktID + 1) {
-        //STX
-        if (getU8() == 0x02) {
-            for (int i = 0; i < LEN; i++) {
-                auto byte = getU8();
-                if (byte == 0x03) throw runtime_error("Incorrect payload length");
-                b64data.push_back(byte);
-            }
-            //ETX
-            if (getU8() == 0x03) {
-                uint16_t msgcrc = getU16();
-                //EOT
-                if (getU8() == 0x04) {
-                    inBfr = base64_decode(b64data);
-                    uint16_t localcrc = CRC16(inBfr.begin(), inBfr.end());
-                    if (localcrc == msgcrc) {
-                        inPktID++;
-                        recvAvailable = true;
-                        recvRetry = 0;
-                        sendACKorNAK(true);
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-
-    if (recvRetry++ < maxReceiveRetryCount) sendACKorNAK(false);
-    else throw runtime_error{"Bad message format"};
-    return false;
-}
-
-uint8_t NFCAdapter::getU8(unsigned int timeout_ms) {
-    static auto getter = std::bind(&TTYAdapter::recv, &ttyAdapter, std::placeholders::_1);
-
-    uint8_t out;
-    bool success = await(timeout_ms, getter, &out);
-    if (!success) throw runtime_error{"Timed out waiting for response"};
-
-    return out;
-}
-
-
-
-
-NFCAdapter::TTYAdapter::TTYAdapter(const char *path, speed_t baudrate) {
-    fd = open(path, O_RDWR);
-    if (fd == -1) throw SYSERR("Error opening TTY");
-    setup(baudrate);
-    //int flags = fcntl(fd, F_GETFL, 0);
-    //fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    ownsFD = true;
-}
-
-NFCAdapter::TTYAdapter::TTYAdapter(int _fd) {
-    fd = _fd;
-    ownsFD = false;
-}
-
-NFCAdapter::TTYAdapter::~TTYAdapter() {
-    if (fd != -1 && ownsFD) close(fd);
-    fd = -1;
-}
-
-bool NFCAdapter::TTYAdapter::recv(uint8_t* val) {
-    uint8_t byte;
-    int n = read(fd, &byte, 1);
-    if (n == -1 && errno != EAGAIN) throw RECVERR;
-    if (n > 0) {
-        *val = byte;
-        return true;
-    } else return false;
-}
-
-void NFCAdapter::TTYAdapter::send(uint8_t *data, size_t len) {
-    if (write(fd, data, len) == -1) throw SENDERR;
-}
-
-void NFCAdapter::TTYAdapter::setup(speed_t baudrate) {
+void setupTTY(int fd, speed_t baudrate, cc_t vtime) {
     if (fd < 0) return;
 
     termios tty;
@@ -249,9 +42,145 @@ void NFCAdapter::TTYAdapter::setup(speed_t baudrate) {
     tty.c_oflag &= ~OPOST;  //no special handling of output chars
     tty.c_oflag &= ~ONLCR;  //no \n -> \r\n
 
-    tty.c_cc[VTIME] = 0;
+    tty.c_cc[VTIME] = vtime;
     tty.c_cc[VMIN] = 0;
     cfsetspeed(&tty, baudrate);
 
     if (tcsetattr(fd, TCSANOW, &tty)) throw SYSERR("Error setting TTY attributes");
+}
+
+
+
+NFCAdapter::NFCAdapter(const char* ttyPath, speed_t baudrate, cc_t vtime) {
+    fd = open(ttyPath, O_RDWR);
+    if (fd == -1) throw SYSERR("Error opening TTY");
+    setupTTY(fd, baudrate, vtime);
+    ownsFD = true;
+}
+
+NFCAdapter::NFCAdapter(int _fd) {
+    fd = _fd;
+    ownsFD = false;
+}
+
+NFCAdapter::~NFCAdapter() {
+    if (ownsFD && fd >= 0) {
+        close(fd);
+        fd = -1;
+    }
+}
+
+void NFCAdapter::sendHeader(uint16_t len) {
+    uint8_t bfr[] {
+        /* SOH */ 0x01,
+        outPktID,
+        (uint8_t)outPktType,
+        (uint8_t)((len >> 8) & 0xFF),
+        (uint8_t)(len & 0xFF),
+        /* STX */ 0x02
+    };
+
+    if (write(fd, bfr, 6) == -1) throw SENDERR;
+}
+
+void NFCAdapter::sendChecksum() {
+    uint16_t crc = CRC16(rawData.begin(), rawData.end());
+    uint8_t bfr[] {
+        /* ETX */ 0x03,
+        (uint8_t)((crc >> 8) & 0xFF),
+        (uint8_t)(crc & 0xFF),
+        /* EOT */ 0x04
+    };
+    
+    if (write(fd, bfr, 4) == -1) throw SENDERR;
+}
+
+void NFCAdapter::sendACKorNAK(bool success) {
+    uint8_t ack = success ? 0x06 : 0x15;
+    if (write(fd, &ack, 1) == -1) throw SENDERR;
+}
+
+bool NFCAdapter::ping() {
+    return true;
+    #pragma GCC message "!! IMPLEMENTOVAT !!"
+}
+
+bool NFCAdapter::waitForACK() {
+    uint8_t bfr[2];
+    if (getNBytes(bfr, 2)) {
+        return bfr[0] == 0x06 && bfr[1] == outPktID;
+    } else throw TIMEOUT;
+}
+
+bool NFCAdapter::processMSG() {
+    std::vector<uint8_t> bfr;
+    auto inserter = std::back_inserter(bfr);
+    uint16_t len;
+
+    if (getNBytes(inserter, 5)) {
+        if (bfr[0] == inPktID + 1) {
+            inPktType = (PacketType)bfr[1];
+            len = ((uint16_t)bfr[2] << 8) | bfr[3];
+
+            if (bfr[4] == 0x02) {
+                bfr.clear();
+
+                if (getNBytes(inserter, len)) {
+                    rawData = base64_decode(bfr.begin(), bfr.end());
+                    uint16_t localCRC = CRC16(rawData.begin(), rawData.end());
+
+                    bfr.clear();
+                    if (getNBytes(inserter, 4)) {
+                        if (bfr[0] == 0x03) {
+                            uint16_t remoteCRC = ((uint16_t)bfr[1] << 8) | bfr[2];
+
+                            if (remoteCRC == localCRC && bfr[3] == 0x04) {
+                                sendACKorNAK(true);
+                                return true;
+                            }
+                        }
+                    } else throw TIMEOUT;
+                } else throw TIMEOUT;
+            }
+        }
+    } else throw TIMEOUT;
+
+    sendACKorNAK(false);
+    return false;
+}
+
+bool NFCAdapter::transmit() {
+    std::string base64 = base64_encode(rawData.begin(), rawData.end());
+    bool success;
+    int iters = 0;
+
+    do {
+        sendHeader(base64.length());
+        if (write(fd, base64.data(), base64.length()) == -1) throw SENDERR;
+        sendChecksum();
+        success = waitForACK();
+    } while (!success && iters++ < maxSendRetryCount);
+    return success;
+}
+
+bool NFCAdapter::receive() {
+    uint8_t mark;
+    int iterations = 0;
+    int messageReads = 0;
+
+    while (iterations++ < maxReadsDumped && messageReads < maxReceiveRetryCount) {
+        if (getNBytes(&mark, 1)) {
+            if (mark == 0x01) {
+                bool res = processMSG();
+                if (!res) {
+                    iterations = 0;
+                    messageReads++;
+                    continue;
+                }
+                return res;
+            } else continue;
+        } else throw TIMEOUT;
+    }
+
+    return false;
 }
