@@ -52,7 +52,7 @@ void setupTTY(int fd, speed_t baudrate, cc_t vtime) {
 
 
 NFCAdapter::NFCAdapter(const char* ttyPath, speed_t baudrate, cc_t vtime) {
-    fd = open(ttyPath, O_RDWR);
+    fd = open(ttyPath, O_RDWR | O_DSYNC);
     if (fd == -1) throw SYSERR("Error opening TTY");
     setupTTY(fd, baudrate, vtime);
     ownsFD = true;
@@ -109,7 +109,7 @@ bool NFCAdapter::waitForACK() {
     uint8_t bfr[2];
     if (getNBytes(bfr, 2)) {
         return bfr[0] == 0x06 && bfr[1] == outPktID;
-    } else throw TIMEOUT;
+    } else return false;
 }
 
 bool NFCAdapter::processMSG() {
@@ -153,7 +153,8 @@ bool NFCAdapter::transmit() {
     std::string base64 = base64_encode(rawData.begin(), rawData.end());
     bool success;
     int iters = 0;
-
+    
+    outPktID++;
     do {
         sendHeader(base64.length());
         if (write(fd, base64.data(), base64.length()) == -1) throw SENDERR;

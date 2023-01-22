@@ -102,7 +102,7 @@ public:
         if (type == PacketType::PKT_NONE) return false;
         
         rawData.clear();
-        std::copy(begin, end, rawData.end());
+        std::copy(begin, end, std::back_inserter(rawData));
         return transmit();
     }
 
