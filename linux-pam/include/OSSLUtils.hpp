@@ -27,18 +27,18 @@ namespace osslUtils {
         struct MDCTX_FREE {
             void operator()(EVP_MD_CTX *ctx) { EVP_MD_CTX_free(ctx); }
         };
-        struct OPARAM_FREE {
-            void operator()(OSSL_PARAM *p) { OSSL_PARAM_free(p); }
-        };
         struct FILE_FREE {
             void operator()(::FILE* fp) { fclose(fp); }
+        };
+        struct BN_FREE {
+            void operator()(BIGNUM *bn) { BN_free(bn); }
         };
         using ODCTX   = std::unique_ptr<OSSL_DECODER_CTX, ODCTX_FREE>;
         using OECTX   = std::unique_ptr<OSSL_ENCODER_CTX, OECTX_FREE>;
         using PKEYCTX = std::unique_ptr<EVP_PKEY_CTX    , PKEYCTX_FREE>;
         using FILE    = std::unique_ptr<FILE            , FILE_FREE>;
         using MDCTX   = std::unique_ptr<EVP_MD_CTX      , MDCTX_FREE>;
-        using OPARAM  = std::unique_ptr<OSSL_PARAM      , OPARAM_FREE>;
+        using BGNM    = std::unique_ptr<BIGNUM          , BN_FREE>;
     }
 
     /// @brief computes the public key fingerprint

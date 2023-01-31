@@ -1,6 +1,7 @@
 #include "OSSLUtils.hpp"
 #include "fmt/format.h"
 #include <openssl/err.h>
+#include <openssl/core_names.h>
 #include <vector>
 #include <termios.h>
 
@@ -38,9 +39,9 @@ std::string getOpenSSLError() {
 }
 
 std::string makeFingerprint(EVP_PKEY *pubkey) {
-    OSSL_PARAM *_op = NULL;
-    EVP_PKEY_todata(pubkey, EVP_PKEY_PUBLIC_KEY, &_op);
-    ap::OPARAM rawkey(_op);
+    BIGNUM *_bn = NULL;
+    if (EVP_PKEY_get_bn_param(pubkey, OSSL_PKEY_PARAM_RSA_N, &_bn) != 1) throw OpenSSLError("GetParam failed");
+    ap::BGNM n(_bn);
 
     const EVP_MD *algorithm = EVP_sha1();
     unsigned int hashLength = EVP_MD_get_size(algorithm);
@@ -48,8 +49,11 @@ std::string makeFingerprint(EVP_PKEY *pubkey) {
     std::vector<uint8_t> hash(hashLength);
     ap::MDCTX ctx = ap::MDCTX(EVP_MD_CTX_new());
 
+    std::vector<uint8_t> data(BN_num_bytes(n.get()));
+    if (BN_bn2bin(n.get(), data.data()) != data.size()) throw OpenSSLError("bn2bin size mismatch");
+
     if (EVP_DigestInit(ctx.get(), algorithm) != 1) throw OpenSSLError("DigestInit failed");
-    if (EVP_DigestUpdate(ctx.get(), rawkey->data, rawkey->data_size) != 1) throw OpenSSLError("DigestUpdate failed");
+    if (EVP_DigestUpdate(ctx.get(), data.data(), data.size()) != 1) throw OpenSSLError("DigestUpdate failed");
     if (EVP_DigestFinal(ctx.get(), hash.data(), &hashLength) != 1) throw OpenSSLError("DigestFinal failed");
 
     return fmt::format("{:02x}", fmt::join(hash, ""));

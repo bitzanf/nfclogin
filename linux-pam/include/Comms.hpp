@@ -101,6 +101,7 @@ public:
     bool sendMessage(const It begin, const It end, PacketType type) {
         if (type == PacketType::PKT_NONE) return false;
         
+        outPktType = type;
         rawData.clear();
         std::copy(begin, end, std::back_inserter(rawData));
         return transmit();

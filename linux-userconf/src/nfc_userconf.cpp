@@ -7,6 +7,8 @@
 #include <functional>
 #include <cxxabi.h>
 #include <cstring>
+#include <security/pam_appl.h>
+#include <security/pam_misc.h>
 
 using namespace osslUtils;
 using std::runtime_error;
@@ -25,8 +27,25 @@ inline apCSTR CXADemangle(const char* mangled) {
     return apCSTR(abi::__cxa_demangle(mangled, 0, 0, &status));
 }
 
+bool requireLogin() {
+    char *username = getlogin();
+    pam_handle_t *pamh;
+    pam_conv conv = { misc_conv, NULL };
+    
+    if (pam_start("pamnfc-userconf", username, &conv, &pamh) != PAM_SUCCESS) {
+        std::cerr << "pamnfc-userconf PAM service not found, fallback to login...\n";
+        if (pam_start("login", username, &conv, &pamh) != PAM_SUCCESS) {
+            std::cerr << "PAM error\n";
+            return false;
+        }
+    }
+
+    return pam_authenticate(pamh, 0) == PAM_SUCCESS;
+}
+
 void Usage() {
     cout << "nfc_userconf [-<ttypath>:<baudrate>] <CMD> ...\n\n"
+            "(some actions might require additional authentication)\n"
             "CMD:\n"
             "    list                   -- lists all registered devices\n"
             "    register               -- registers a new device\n"
@@ -44,6 +63,10 @@ void List(UserConf& uc) {
 void Register(UserConf& uc, NFCAdapter &nfc) {
     vector<uint8_t> temp;
     NFCAdapter::PacketType respType;
+    if (!requireLogin()) {
+        cout << "You have to be authenticated to register a new device\n";
+        return;
+    }
 
     auto &fp = uc.getFingerprint();
     auto &pk = uc.getPubKey();
@@ -67,6 +90,10 @@ void Register(UserConf& uc, NFCAdapter &nfc) {
 void Remove(UserConf& uc, NFCAdapter &nfc, char* fp) {
     string sFP;
     NFCAdapter::PacketType respType;
+    if (!requireLogin()) {
+        cout << "You have to be authenticated to remove device\n";
+        return;
+    }
 
     if (fp == nullptr) {
         const string& ucfp = uc.getFingerprint();
@@ -78,7 +105,7 @@ void Remove(UserConf& uc, NFCAdapter &nfc, char* fp) {
         nfc.sendMessage(outMsgBfr, NFCAdapter::PacketType::DATAPACKET);
 
         respType = nfc.getResponse(sFP);
-        if (respType != NFCAdapter::PacketType::DATAPACKET) throw runtime_error{"Incorrect apcket type"};
+        if (respType != NFCAdapter::PacketType::DATAPACKET) throw runtime_error{"Incorrect packet type"};
 
         sFP.erase(0, 3);
     } else sFP.assign(fp);

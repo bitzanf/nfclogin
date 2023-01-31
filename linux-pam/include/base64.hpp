@@ -8,8 +8,8 @@
 extern const char base64chars[];
 struct base64LUT_t {
     base64LUT_t() {
+        for (int i = 0; i < 256; i++) _base64LUT[i] = -1;
         for (int i = 0; i < 64; i++) _base64LUT[base64chars[i]] = i;
-        for (int i = 64; i < 256; i++) _base64LUT[i] = -1;
     }
 
     constexpr int operator[](int i) const { return _base64LUT[i]; }

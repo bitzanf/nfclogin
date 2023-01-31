@@ -104,6 +104,7 @@ bool CryptoLoginManager::Device::checkSecret(const std::vector<uint8_t> &_secret
     if (EVP_PKEY_decrypt(ctx.get(), NULL, &decryptedLen, _secret.data(), _secret.size()) <= 0) throw OpenSSLError("Error (null) decrypting");
     decrypted.resize(decryptedLen);
     if (EVP_PKEY_decrypt(ctx.get(), decrypted.data(), &decryptedLen, _secret.data(), _secret.size()) <= 0) throw OpenSSLError("Error decrypting");
+    decrypted.resize(decryptedLen);
     
     return !memcmp(decrypted.data(), secret.data(), min(decrypted.size(), secret.size()));
 }

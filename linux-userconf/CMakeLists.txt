@@ -26,4 +26,4 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
 #https://stackoverflow.com/questions/17707044/getting-cmake-to-give-an-error-warning-about-unreferenced-symbols
 set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-undefined")
 
-target_link_libraries(${PROJECT_NAME} ssl crypto sqlite3)
+target_link_libraries(${PROJECT_NAME} ssl crypto sqlite3 pam_misc pam)

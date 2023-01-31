@@ -42,22 +42,26 @@ auto getSplitIter(vector<uint8_t>& data) {
 }
 
 int doAuth(NFCAdapter& nfc, CryptoLoginManager& mngr, const string& fp) {
-    vector<uint8_t> msg, response;
-    auto dev = mngr.getDevice(fp);
-    auto secret = dev.getSecret();
-    bool r;
+    try {
+        vector<uint8_t> msg, response;
+        auto dev = mngr.getDevice(fp);
+        auto secret = dev.getSecret();
+        bool r;
 
-    msg.assign({'a', 'u', 't', 'h', '|'});
-    msg.insert(msg.end(), secret.begin(), secret.end());
+        msg.assign({'a', 'u', 't', 'h', '|'});
+        msg.insert(msg.end(), secret.begin(), secret.end());
 
 
-    if (!nfc.sendMessage(msg, NFCAdapter::PacketType::DATAPACKET)) return PAM_AUTH_ERR;
-    auto pt = nfc.getResponse(response);
-    
-    if (pt == NFCAdapter::PacketType::DATAPACKET) {
-        if (dev.checkSecret(vector<uint8_t>(getSplitIter(response)+1, response.end()))) return PAM_SUCCESS;
-        else return PAM_PERM_DENIED;
-    } else return PAM_AUTH_ERR;
+        if (!nfc.sendMessage(msg, NFCAdapter::PacketType::DATAPACKET)) return PAM_AUTH_ERR;
+        auto pt = nfc.getResponse(response);
+        
+        if (pt == NFCAdapter::PacketType::DATAPACKET) {
+            if (dev.checkSecret(vector<uint8_t>(getSplitIter(response)+1, response.end()))) return PAM_SUCCESS;
+            else return PAM_PERM_DENIED;
+        } else return PAM_AUTH_ERR;
+    } catch (CryptoLoginManager::Device::DeviceNotFound) {
+        return PAM_PERM_DENIED;
+    }
 }
 
 PAM_EXTERN "C" int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv) {
@@ -174,6 +178,8 @@ PAM_EXTERN "C" int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, 
                     }
                 }
             }
+
+            usleep(5e5);
         }
 
         finish:
