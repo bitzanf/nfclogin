@@ -12,17 +12,15 @@ SQLite3Error::SQLite3Error(const char *msg, sqlite3 *db) : runtime_error(fmt::fo
 
 UserConf::UserConf() {
     try {
-        privateKey = loadPEMKey(configPath + "private.pem", false);
-        publicKey = loadPEMKey(configPath + "public.pem", true);
+        keypair = loadPEMKey(configPath + "private.pem", false);
     } catch (system_error &e) {
         if (e.code() == errc::no_such_file_or_directory) {
             makeKeyPair();
         } else throw e;
     }
 
-    fingerprint = makeFingerprint(publicKey);
-    ifstream fPubKey(configPath + "public.pem");
-    sPublicKey = string(istreambuf_iterator<char>(fPubKey), istreambuf_iterator<char>());
+    makePublicPEM();
+    fingerprint = makeFingerprint(keypair);
 
     int sqlEC = sqlite3_open((configPath + "clients.db").c_str(), &db);
     if (sqlEC) throw SQLite3Error("Error opening database", db);
@@ -91,10 +89,8 @@ UserConf::~UserConf() {
         else db = NULL;
     }
 
-    if (privateKey) EVP_PKEY_free(privateKey);
-    if (publicKey) EVP_PKEY_free(publicKey);
-    privateKey = NULL;
-    publicKey = NULL;
+    if (keypair) EVP_PKEY_free(keypair);
+    keypair = NULL;
 }
 
 bool UserConf::newDevice(const string &devFP, const string &devPK) {
@@ -121,7 +117,7 @@ bool UserConf::newDevice(const string &devFP, const string &devPK) {
     return false;
 }
 
-void UserConf::deleteDevice(const std::string &devFP) {
+void UserConf::deleteDevice(const string &devFP) {
     sqlite3_bind_text(sqlDelete, 1, devFP.c_str(), devFP.length(), NULL);
     int rc = sqlite3_step(sqlDelete);
     if (rc != SQLITE_DONE) throw SQLite3Error("Error deleting a device", db);
@@ -130,25 +126,22 @@ void UserConf::deleteDevice(const std::string &devFP) {
 }
 
 void UserConf::makeKeyPair() {
-    ap::PKEYCTX ctx = ap::PKEYCTX(EVP_PKEY_CTX_new_from_name(NULL, "RSA", NULL));
-    if (!ctx) throw OpenSSLError("Error creating key context");
-    
-    if (EVP_PKEY_keygen_init(ctx.get()) <= 0) throw OpenSSLError("EVP_PKEY_keygen_init() failed");
-    if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx.get(), keyBits) <= 0) throw OpenSSLError("Error setting key bits");
-    if (EVP_PKEY_CTX_set_rsa_keygen_primes(ctx.get(), 2) <= 0) throw OpenSSLError("Error setting key primes");
-    if (EVP_PKEY_generate(ctx.get(), &privateKey) <= 0) throw OpenSSLError("Error generating private key");
-
-    ap::FILE pubf = ap::FILE(fopen((configPath + "public.pem").c_str(), "wb"));
-    if (!pubf) throw system_error(errno, generic_category(), "Error opening public key file for writing");
-    if (PEM_write_PUBKEY(pubf.get(), privateKey) <= 0) throw OpenSSLError("Error writing public key");
-
+    keypair = EVP_RSA_gen(keyBits);
+    if (!keypair) throw OpenSSLError("Error creating keypair");
     ap::FILE privf = ap::FILE(fopen((configPath + "private.pem").c_str(), "wb"));
     if (!privf) throw system_error(errno, generic_category(), "Error opening private key file for writing");
-    if (PEM_write_PrivateKey(privf.get(), privateKey, NULL, NULL, 0, NULL, NULL) <= 0) throw OpenSSLError("Error writing private key");
+    if (PEM_write_PrivateKey(privf.get(), keypair, NULL, NULL, 0, NULL, NULL) <= 0) throw OpenSSLError("Error writing private key");
+}
 
-    //nechutný, ale nenašel jsem tutoriál, jak to udělat lépe :(
-    fflush(pubf.get());
-    publicKey = loadPEMKey(configPath + "public.pem", true);
+void UserConf::makePublicPEM() {
+    BIO *bio = BIO_new(BIO_s_mem());
+    if (PEM_write_bio_PUBKEY(bio, keypair) <= 0) throw OpenSSLError("Error generating public key PEM");
+    
+    char *data;
+    size_t len = BIO_get_mem_data(bio, &data);
+
+    publicKeyPEM = string(data, len);
+    BIO_free(bio);
 }
 
 //https://github.com/openssl/openssl/blob/master/demos/pkey/EVP_PKEY_RSA_keygen.c

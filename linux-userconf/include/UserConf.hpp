@@ -24,7 +24,7 @@ public:
     inline const std::string& getFingerprint() { return fingerprint; };
 
     /// @return PEM local public key string
-    inline const std::string& getPubKey() { return sPublicKey; };
+    inline const std::string& getPubKey() { return publicKeyPEM; };
 
     /// @brief registers a new device under the current user
     /// @param devFP fingerprint of the device
@@ -78,14 +78,14 @@ private:
     std::string fingerprint;
 
     /// @brief PEM string of the public key
-    std::string sPublicKey;
+    std::string publicKeyPEM;
 
     sqlite3 *db;
     sqlite3_stmt *sqlInsert, *sqlDelete, *sqlExists, *sqlSelect;
-    EVP_PKEY *privateKey;
-    EVP_PKEY *publicKey;
+    EVP_PKEY *keypair;
 
     void makeKeyPair();
+    void makePublicPEM();
 };
 
 #endif

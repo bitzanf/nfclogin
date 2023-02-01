@@ -96,13 +96,9 @@ void Remove(UserConf& uc, NFCAdapter &nfc, char* fp) {
     }
 
     if (fp == nullptr) {
-        const string& ucfp = uc.getFingerprint();
-        const string header = "fp|";
-        vector<uint8_t> outMsgBfr;
-        outMsgBfr.assign(header.begin(), header.end());
-        outMsgBfr.insert(outMsgBfr.end(), ucfp.begin(), ucfp.end());
+        const string localFP = "fp|" + uc.getFingerprint();
 
-        nfc.sendMessage(outMsgBfr, NFCAdapter::PacketType::DATAPACKET);
+        nfc.sendMessage(localFP, NFCAdapter::PacketType::DATAPACKET);
 
         respType = nfc.getResponse(sFP);
         if (respType != NFCAdapter::PacketType::DATAPACKET) throw runtime_error{"Incorrect packet type"};
