@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/home/petr/.arduino15/libraries/**",
+                "/home/petr/.arduino15/packages/Intel/hardware/arc32/2.0.5/libraries/**",
+                "/home/petr/.arduino15/packages/Intel/hardware/arc32/2.0.5/cores/arduino",
+                "/home/petr/.arduino15/packages/Intel/hardware/arc32/2.0.5/variants/arduino_101",
+                "/home/petr/.arduino15/packages/Intel/hardware/arc32/2.0.5/system/libarc32_arduino101/framework/include",
+                "/home/petr/.arduino15/packages/Intel/hardware/arc32/2.0.5/system/libarc32_arduino101/**",
+                "/home/petr/Arduino/libraries/**"
+            ],
+            "defines": [],
+            //"compilerPath": "/usr/local/bin/g++",
+            "cStandard": "c11",
+            "cppStandard": "c++11",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
