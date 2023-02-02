@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+	xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+	xmlns:app="clr-namespace:NFCLoginApp"
+	x:DataType="app:DeviceDB"
+	x:Class="NFCLoginApp.Pages.DeviceList"
+	Title="Devices"
+>
+	<ContentPage.ToolbarItems>
+		<ToolbarItem Text="ADD" Clicked="RegisterDeviceBtnClick" />
+	</ContentPage.ToolbarItems>
+
+	<ContentPage.Resources>
+		<!--
+		<Style TargetType="Label">
+			<Setter Property="FontSize" Value="12" />
+		</Style>
+		-->
+	</ContentPage.Resources>
+
+	<StackLayout>
+		<CollectionView ItemsSource="{Binding DB_Devices}" SelectionMode="None">
+			<CollectionView.ItemTemplate>
+				<DataTemplate>
+					<StackLayout x:DataType="app:Device" Padding="20">
+						<Label Text="{Binding Name}" FontSize="20" HorizontalTextAlignment="Center" />
+						<Label Text="{Binding Registered, StringFormat='Registrace: {yyyy-MM-dd HH:mm:ss}'}" HorizontalOptions="Center" />
+						<BoxView HeightRequest="1" Color="Gray" />
+
+						<StackLayout.GestureRecognizers>
+							<!--<TapGestureRecognizer
+								NumberOfTapsRequired="1"
+								Command="{Binding Source={x:Type app:DeviceList}, Path=DeviceTapped}"
+								CommandParameter="{Binding .}"
+							/>-->
+							<TapGestureRecognizer
+								NumberOfTapsRequired="1"
+								Tapped="OnDevTap"
+								CommandParameter="{Binding .}"
+							/>
+						</StackLayout.GestureRecognizers>
+					</StackLayout>
+				</DataTemplate>
+			</CollectionView.ItemTemplate>
+		</CollectionView>
+
+		<Label
+			Text="{Binding DB_DeviceCount, StringFormat='{0:d} devices'}"
+            VerticalOptions="CenterAndExpand" 
+            HorizontalOptions="CenterAndExpand"
+		/>
+	</StackLayout>
+</ContentPage>

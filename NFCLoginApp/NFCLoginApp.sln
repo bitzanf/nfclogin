@@ -1,0 +1,35 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.3.32922.545
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NFCLoginApp.Android", "NFCLoginApp\NFCLoginApp.Android\NFCLoginApp.Android.csproj", "{6838599E-9991-4823-B316-187BE35E0DBB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NFCLoginApp", "NFCLoginApp\NFCLoginApp\NFCLoginApp.csproj", "{6F1B12D4-6FA6-403C-A600-1EAF250533B5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6838599E-9991-4823-B316-187BE35E0DBB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6838599E-9991-4823-B316-187BE35E0DBB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6838599E-9991-4823-B316-187BE35E0DBB}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{6838599E-9991-4823-B316-187BE35E0DBB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6838599E-9991-4823-B316-187BE35E0DBB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6838599E-9991-4823-B316-187BE35E0DBB}.Release|Any CPU.Deploy.0 = Release|Any CPU
+		{6F1B12D4-6FA6-403C-A600-1EAF250533B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F1B12D4-6FA6-403C-A600-1EAF250533B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F1B12D4-6FA6-403C-A600-1EAF250533B5}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{6F1B12D4-6FA6-403C-A600-1EAF250533B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F1B12D4-6FA6-403C-A600-1EAF250533B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F1B12D4-6FA6-403C-A600-1EAF250533B5}.Release|Any CPU.Deploy.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F9EDDD3C-5DFC-4A67-B9F3-3919B4D16B80}
+	EndGlobalSection
+EndGlobal

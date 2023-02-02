@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+
+<resources>
+	<string name="service_name">Host-Based Card Emulation Serivce</string>
+	<string name="card_title">AID Filters For NFC Login</string>
+</resources>
