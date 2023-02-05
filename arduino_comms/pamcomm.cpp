@@ -1,3 +1,4 @@
+#include <PN532_HSU.h>
 #include "pamcomm.h"
 #include "apdu.h"
 

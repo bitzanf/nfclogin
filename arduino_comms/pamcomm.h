@@ -1,7 +1,6 @@
 #ifndef _PAMCOMM_H_
 #define _PAMCOMM_H_
 
-#include <PN532_HSU.h>
 #include <PN532.h>
 #include "utils.h"
 

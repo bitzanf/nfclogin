@@ -15,11 +15,12 @@ UserConf::UserConf() {
         keypair = loadPEMKey(configPath + "private.pem", false);
     } catch (system_error &e) {
         if (e.code() == errc::no_such_file_or_directory) {
+            system(("mkdir -p " + configPath).c_str());   //hnus, ja vim...
             makeKeyPair();
         } else throw e;
     }
 
-    makePublicPEM();
+    makePublicDER();
     fingerprint = makeFingerprint(keypair);
 
     int sqlEC = sqlite3_open((configPath + "clients.db").c_str(), &db);
@@ -91,6 +92,8 @@ UserConf::~UserConf() {
 
     if (keypair) EVP_PKEY_free(keypair);
     keypair = NULL;
+
+    if (publicKeyDER.data()) OPENSSL_free(publicKeyDER.data());
 }
 
 bool UserConf::newDevice(const string &devFP, const string &devPK) {
@@ -133,15 +136,13 @@ void UserConf::makeKeyPair() {
     if (PEM_write_PrivateKey(privf.get(), keypair, NULL, NULL, 0, NULL, NULL) <= 0) throw OpenSSLError("Error writing private key");
 }
 
-void UserConf::makePublicPEM() {
-    BIO *bio = BIO_new(BIO_s_mem());
-    if (PEM_write_bio_PUBKEY(bio, keypair) <= 0) throw OpenSSLError("Error generating public key PEM");
-    
-    char *data;
-    size_t len = BIO_get_mem_data(bio, &data);
+void UserConf::makePublicDER() {
+    uint8_t *pubkey = nullptr;
+    int pkLen = i2d_PublicKey(keypair, &pubkey);
 
-    publicKeyPEM = string(data, len);
-    BIO_free(bio);
+    if (pkLen <= 0) throw OpenSSLError("Error generating public key DER");
+
+    publicKeyDER = {pubkey, pkLen};
 }
 
 //https://github.com/openssl/openssl/blob/master/demos/pkey/EVP_PKEY_RSA_keygen.c

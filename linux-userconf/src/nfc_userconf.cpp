@@ -7,14 +7,17 @@
 #include <functional>
 #include <cxxabi.h>
 #include <cstring>
+#include <span>
 #include <security/pam_appl.h>
 #include <security/pam_misc.h>
+#include <openssl/pem.h>
 
 using namespace osslUtils;
 using std::runtime_error;
 using std::find_if;
 using std::string;
 using std::vector;
+using std::span;
 using std::cout;
 
 struct AP_MALLOC_FREE {
@@ -41,6 +44,23 @@ bool requireLogin() {
     }
 
     return pam_authenticate(pamh, 0) == PAM_SUCCESS;
+}
+
+string DER2PEM(span<uint8_t> der) {
+    EVP_PKEY *devPubKey;
+    uint8_t *pDER = der.data();
+    if (d2i_PublicKey(EVP_PKEY_RSA, &devPubKey, &pDER, der.size()) == nullptr) throw OpenSSLError("Error decoding DER device key");
+
+    BIO *bio = BIO_new(BIO_s_mem());
+    PEM_write_bio_PUBKEY(bio, devPubKey);
+
+    uint8_t *data;
+    size_t len = BIO_get_mem_data(bio, &data);
+    string pem{(char*)data, len};
+
+    EVP_PKEY_free(devPubKey);
+    BIO_free(bio);
+    return pem;
 }
 
 void Usage() {
@@ -81,7 +101,7 @@ void Register(UserConf& uc, NFCAdapter &nfc) {
     if (respType != NFCAdapter::PacketType::REGISTER) throw runtime_error{"Incorrect packet type"};
     
     auto split = find_if(temp.begin(), temp.end(), [](uint8_t val){ return val == '|'; });
-    bool res = uc.newDevice(string(temp.begin(), split), string(split+1, temp.end()));
+    bool res = uc.newDevice(string(temp.begin(), split), DER2PEM({(split+1), temp.end()}));
 
     if (res) cout << "Registration successful\n";
     else cout << "Registration failed\n";

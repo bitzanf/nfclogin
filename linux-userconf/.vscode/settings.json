@@ -71,8 +71,8 @@
     "C_Cpp.errorSquiggles": "enabled",
     "cmake.debugConfig": {
         "args": [
-            "-/dev/ttyS0:115200",
-            "register"
+            "-/dev/ttyACM0:9600",
+            "list"
         ]
     }
 }

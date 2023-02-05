@@ -8,6 +8,7 @@
 #include <sqlite3.h>
 #include <openssl/evp.h>
 #include <string>
+#include <span>
 #include "../../linux-pam/include/OSSLUtils.hpp"
 
 class SQLite3Error : public std::runtime_error {
@@ -24,7 +25,7 @@ public:
     inline const std::string& getFingerprint() { return fingerprint; };
 
     /// @return PEM local public key string
-    inline const std::string& getPubKey() { return publicKeyPEM; };
+    inline const auto& getPubKey() { return publicKeyDER; };
 
     /// @brief registers a new device under the current user
     /// @param devFP fingerprint of the device
@@ -71,21 +72,21 @@ private:
     const std::string configPath = "/etc/pam-nfc/";
 
     /// @brief number of bits of the OpenSSL key
-    const unsigned int keyBits = 2048;
+    const unsigned int keyBits = 1024;
 
     /// @brief public key fingerprint, used for unique identification of the pc
     ///        (SHA1 hash, string of {:02x} values)
     std::string fingerprint;
 
-    /// @brief PEM string of the public key
-    std::string publicKeyPEM;
+    /// @brief DER representation of the public key
+    std::span<uint8_t> publicKeyDER;
 
     sqlite3 *db;
     sqlite3_stmt *sqlInsert, *sqlDelete, *sqlExists, *sqlSelect;
     EVP_PKEY *keypair;
 
     void makeKeyPair();
-    void makePublicPEM();
+    void makePublicDER();
 };
 
 #endif
