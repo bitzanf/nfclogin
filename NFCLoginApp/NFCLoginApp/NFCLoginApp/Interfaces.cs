@@ -14,7 +14,7 @@ namespace NFCLoginApp
 		
 		byte[] Transcode(RSA devPK, byte[] data);
 
-		string PublicKeyPEM { get; }
+		byte[] PublicKeyDER { get; }
 		string Fingerprint { get; }
 	}
 

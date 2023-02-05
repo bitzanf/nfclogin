@@ -2,10 +2,13 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using NFCLoginApp;
+using PemUtils;
 using SQLite;
 using Xamarin.Forms.Internals;
 
@@ -52,6 +55,19 @@ namespace NFCLoginApp
 			{
 				OnDBError.Invoke(ex);
 			}
+		}
+
+		public void AddDevice(string fp, RSA pk)
+		{
+			using (var stream = new MemoryStream())
+			{
+				using (var writer = new PemWriter(stream))
+				{
+					writer.WritePublicKey(pk);
+					AddDevice(fp, stream.ToString());
+				}
+			}
+
 		}
 
 		public void RemoveDevice(string fp)

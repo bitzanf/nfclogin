@@ -2,6 +2,7 @@
 using Android.Content;
 //using Android.OS;
 using Android.Runtime;
+using Android.Util;
 using Android.Views;
 using Android.Widget;
 using Java.IO;
@@ -9,8 +10,10 @@ using Java.Util;
 using PemUtils;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Xamarin.Forms;
@@ -57,6 +60,7 @@ namespace NFCLoginApp.Droid
 		void PrepareKeyPair()
 		{
 			string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
 			try
 			{
 				using var stream = new FileStream(Path.Combine(path, "private.pem"), FileMode.Open);
@@ -64,9 +68,19 @@ namespace NFCLoginApp.Droid
 				keypair = RSA.Create(reader.ReadRsaKey());
 			} catch (System.IO.FileNotFoundException)
 			{
-				keypair = RSA.Create(2048);
+				keypair = RSA.Create(keyBits);
+				using var stream = new FileStream(Path.Combine(path, "private.pem"), FileMode.Create);
+				using var writer = new PemWriter(stream);
+				writer.WritePrivateKey(keypair);
 			}
-			PublicKeyPEM = KeyToPEM(keypair, false);
+			try
+			{
+				//PublicKeyDER = keypair.ExportRSAPublicKey();
+				PublicKeyDER = RSAUtils.ExportPublicKey(keypair.ExportParameters(false));
+			} catch (Exception ex)
+			{
+				Log.Error("CryptoServices", ex.Message);
+			}
 			generateFingerprint();
 		}
 
@@ -84,10 +98,12 @@ namespace NFCLoginApp.Droid
 			Fingerprint = sb.ToString();
 		}
 
-		public string PublicKeyPEM { get; private set; }
+		public byte[] PublicKeyDER { get; private set; }
 		public string Fingerprint { get; private set; }
 
 		RSA keypair;
 		RSACryptoServiceProvider csp = new RSACryptoServiceProvider();
+
+		const int keyBits = 1024;
 	}
 }

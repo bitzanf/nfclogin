@@ -16,14 +16,14 @@ using System.Threading.Tasks;
 
 namespace NFCLoginApp.Droid
 {
-	[Service(Exported = true, Enabled = true, Permission = "android.permission.BIND_NFC_SERVICE")]
-	[IntentFilter(new[] {"android.nfc.cardemulation.action.HOST_APDU_SERVICE"}, Categories = new[] {"android.intent.category.DEFAULT"})]
-	[MetaData("android.nfc.cardemulation.host_apdu_service", Resource = "@xml/aid_list")]
+	[
+		Service(Exported = true, Enabled = true, Permission = "android.permission.BIND_NFC_SERVICE"),
+		IntentFilter(new[] {"android.nfc.cardemulation.action.HOST_APDU_SERVICE"}, Categories = new[] {"android.intent.category.DEFAULT"}),
+		MetaData("android.nfc.cardemulation.host_apdu_service", Resource = "@xml/aid_list")
+	]
 	public class HCEService : HostApduService
 	{
-		// AID for our loyalty card service. F0 + 9 ( let ) + "Lumpik"
-		private const string LOGIN_AID	  = "F94C756D70696B";
-		private const string REGISTER_AID = "FA4C756D70696B";
+		private const string AID = "F06D656F77";
 
 		// ISO-DEP command HEADER for selecting an AID.
 		// Format: [Class | Instruction | Parameter 1 | Parameter 2]
@@ -36,8 +36,7 @@ namespace NFCLoginApp.Droid
 
 		// "UNKNOWN" status word sent in response to invalid APDU command (0x0000)
 		private static readonly byte[] UNKNOWN_CMD_SW = HexStringToByteArray("0000");
-		private static readonly byte[] SELECT_LOGIN_APDU = BuildSelectApdu(LOGIN_AID);
-		private static readonly byte[] SELECT_REGISTER_APDU = BuildSelectApdu(REGISTER_AID);
+		private static readonly byte[] SELECT_APDU = BuildSelectApdu(AID);
 		private static readonly byte[] FINGERPRINT = Encoding.UTF8.GetBytes(Globals.cryptoServices.Fingerprint);
 
 		Context context = Android.App.Application.Context;
@@ -58,7 +57,7 @@ namespace NFCLoginApp.Droid
 
 		public HCEService() : base()
 		{
-			handlers = new Func<byte[], byte[]>[3]{
+			handlers = new Func<byte[], byte[]>[]{
 				HandleLogin,
 				HandleRegister,
 				HandleData
@@ -82,7 +81,7 @@ namespace NFCLoginApp.Droid
 		public override byte[] ProcessCommandApdu(byte[] commandApdu, Bundle extras)
 		{
 			byte[] response;
-
+			return ConcatArrays(new byte[] { 0x01, 0x02, 0x03 }, SELECT_OK_SW);
 			foreach (var handler in handlers)
 			{
 				response = handler(commandApdu);
@@ -94,16 +93,16 @@ namespace NFCLoginApp.Droid
 
 		byte[] HandleLogin(byte[] apdu)
 		{
-			if (state != InternalState.INIT || !CompareArrays(apdu, SELECT_LOGIN_APDU)) return null;
+			if (state != InternalState.INIT || !CompareArrays(apdu, SELECT_APDU)) return null;
 			state = InternalState.LOGIN_FP_SENT;
 			return ConcatArrays(FINGERPRINT_PREAMBLE, FINGERPRINT);
 		}
 
 		byte[] HandleRegister(byte[] apdu)
 		{
-			if (state != InternalState.INIT || !CompareArrays(apdu, SELECT_REGISTER_APDU)) return null;
+			if (state != InternalState.INIT || !CompareArrays(apdu, SELECT_APDU)) return null;
 			state = InternalState.REGISTER_INFO_SENT;
-			return ConcatArrays(FINGERPRINT, Encoding.UTF8.GetBytes("|" + Globals.cryptoServices.PublicKeyPEM));
+			return ConcatArrays(FINGERPRINT, Encoding.UTF8.GetBytes("|"), Globals.cryptoServices.PublicKeyDER);
 		}
 
 		byte[] HandleData(byte[] apdu)

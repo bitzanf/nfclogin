@@ -24,8 +24,7 @@
     -->
 
 	<aid-group android:description="@string/card_title" android:category="other">
-		<aid-filter android:name="F94C756D70696B"/> <!-- login -->
-		<aid-filter android:name="FA4C756D70696B"/> <!-- register -->
+		<aid-filter android:name="F06D656F77" />
 	</aid-group>
 
 </host-apdu-service>
