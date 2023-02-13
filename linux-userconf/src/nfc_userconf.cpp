@@ -56,7 +56,7 @@ bool requireLogin() {
 /// @param der binární veřejný klíč
 /// @return PEM string
 string DER2PEM(span<uint8_t> der) {
-    EVP_PKEY *devPubKey;
+    EVP_PKEY *devPubKey = nullptr;
     uint8_t *pDER = der.data();
     if (d2i_PublicKey(EVP_PKEY_RSA, &devPubKey, (const uint8_t**)&pDER, der.size()) == nullptr) throw OpenSSLError("Error decoding DER device key");
 
@@ -146,6 +146,7 @@ void Remove(UserConf& uc, NFCAdapter &nfc, char* fp) {
         sFP.erase(0, 3);
     } else sFP.assign(fp);
 
+    cout << "Removing device [" << sFP << "]\n";
     uc.deleteDevice(sFP);
 }
 
@@ -190,6 +191,7 @@ int main_u(int argc, char** argv) {
         List(uc);
     } else {
         NFCAdapter nfc(ttyPath.c_str(), ttyBaud, 50 /* *0,1s => 5s */);
+        if (!nfc.ping()) throw runtime_error{"error communicating with NFC adapter"};
 
         if (!strcmp("register", argv[optidx])) {
             cout << "Registering a new device...\n";
