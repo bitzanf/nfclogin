@@ -2,17 +2,8 @@
 using Android.Content;
 using Android.Nfc.CardEmulators;
 using Android.OS;
-using Android.Runtime;
-using Android.Util;
-using Android.Views;
-using Android.Widget;
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace NFCLoginApp.Droid
 {
@@ -39,11 +30,8 @@ namespace NFCLoginApp.Droid
 		private static readonly byte[] SELECT_APDU = BuildSelectApdu(AID);
 		private static readonly byte[] FINGERPRINT = Encoding.UTF8.GetBytes(Globals.cryptoServices.Fingerprint);
 
-		Context context = Android.App.Application.Context;
-
+		Context context = Application.Context;
 		Device currentDevice;
-
-		Func<byte[], byte[]>[] handlers;
 		InternalState state;
 
 		enum InternalState
@@ -57,12 +45,6 @@ namespace NFCLoginApp.Droid
 
 		public HCEService() : base()
 		{
-			handlers = new Func<byte[], byte[]>[]{
-				HandleLogin,
-				HandleRegister,
-				HandleData
-			};
-
 			state = InternalState.INIT;
 		}
 
@@ -81,26 +63,30 @@ namespace NFCLoginApp.Droid
 		public override byte[] ProcessCommandApdu(byte[] commandApdu, Bundle extras)
 		{
 			byte[] response;
-			return ConcatArrays(new byte[] { 0x01, 0x02, 0x03 }, SELECT_OK_SW);
-			foreach (var handler in handlers)
+			if (state == InternalState.INIT)
 			{
-				response = handler(commandApdu);
-				if (response != null) return response;
+				if (Globals.ShouldRegsiter) response = HandleRegister(commandApdu);
+				else response = HandleLogin(commandApdu);
+			}
+			else
+			{
+				response = HandleData(commandApdu);
 			}
 
-			return UNKNOWN_CMD_SW;
+			if (response == null) return UNKNOWN_CMD_SW;
+			else return ConcatArrays(response, SELECT_OK_SW);
 		}
 
 		byte[] HandleLogin(byte[] apdu)
 		{
-			if (state != InternalState.INIT || !CompareArrays(apdu, SELECT_APDU)) return null;
+			if (!CompareArrays(apdu, SELECT_APDU)) return null;
 			state = InternalState.LOGIN_FP_SENT;
 			return ConcatArrays(FINGERPRINT_PREAMBLE, FINGERPRINT);
 		}
 
 		byte[] HandleRegister(byte[] apdu)
 		{
-			if (state != InternalState.INIT || !CompareArrays(apdu, SELECT_APDU)) return null;
+			if (!CompareArrays(apdu, SELECT_APDU)) return null;
 			state = InternalState.REGISTER_INFO_SENT;
 			return ConcatArrays(FINGERPRINT, Encoding.UTF8.GetBytes("|"), Globals.cryptoServices.PublicKeyDER);
 		}
@@ -109,9 +95,6 @@ namespace NFCLoginApp.Droid
 		{
 			switch (state)
 			{
-				case InternalState.INIT:
-					return null;
-
 				case InternalState.LOGIN_FP_SENT:
 					string[] PCFP = Encoding.UTF8.GetString(apdu).Split('|');
 					if (PCFP[0] != "fp") return null;
@@ -130,10 +113,14 @@ namespace NFCLoginApp.Droid
 					}
 
 				case InternalState.REGISTER_INFO_SENT:
-					string[] PCInfo = Encoding.UTF8.GetString(apdu).Split('|');
+					int split = Array.IndexOf(apdu, '|');
+					if (split <= 2) return null;
+
 					state = InternalState.DEVICE_ADDING;
 
-					AddDevice(PCInfo[0], PCInfo[1]);
+					string fp = Encoding.UTF8.GetString(apdu[..split]);
+					byte[] derKey = apdu[(split + 1)..];
+					AddDevice(fp, RSAUtils.DER2PEM(derKey));
 					return SELECT_OK_SW;
 
 				case InternalState.LOGIN_DATA_WAITING:
@@ -160,11 +147,12 @@ namespace NFCLoginApp.Droid
 			}
 		}
 
-		async void AddDevice(string fp, string pem)
+		void AddDevice(string fp, string pem)
 		{
 			if (!Globals.IsAppRunning) SendNotification("You have to run the app to register new devices");
 			else Globals.deviceDB.AddDevice(fp, pem);
 			state = InternalState.INIT;
+			Globals.ShouldRegsiter = false;
 		}
 
 		void SendNotification(string message)
@@ -172,7 +160,8 @@ namespace NFCLoginApp.Droid
 			var builder = new Notification.Builder(context, MainActivity.CHANNEL_ID)
 				.SetAutoCancel(true)
 				.SetContentTitle("NFCLoginApp")
-				.SetContentText(message);
+				.SetContentText(message)
+				.SetSmallIcon(Android.Resource.Drawable.SymDefAppIcon);
 
 			var notificationManager = NotificationManager.FromContext(context);
 			notificationManager.Notify(MainActivity.NOTIFICATION_ID, builder.Build());
