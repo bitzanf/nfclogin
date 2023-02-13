@@ -8,5 +8,6 @@ namespace NFCLoginApp
 		public static DeviceDB deviceDB = new DeviceDB();
 		public static ICryptoServices cryptoServices = DependencyService.Get<ICryptoServices>();
 		public static bool IsAppRunning = false;
+		public static bool ShouldRegsiter = false;
 	}
 }

@@ -1,9 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Plugin.NFC;
 using Xamarin.Forms;
 using Xamarin.Forms.Xaml;
@@ -18,6 +13,12 @@ namespace NFCLoginApp.Pages
 		public AddDevice()
 		{
 			InitializeComponent();
+		}
+
+		~AddDevice()
+		{
+			Globals.deviceDB.OnDeviceAdded -= OnDeviceAdded;
+			Globals.ShouldRegsiter = false;
 		}
 
 		public void RegisterBtnClick(object sender, EventArgs e)
@@ -37,7 +38,10 @@ namespace NFCLoginApp.Pages
 			}
 			Globals.deviceDB.NewDeviceName = deviceName;
 			Globals.deviceDB.OnDeviceAdded += OnDeviceAdded;
+			Globals.ShouldRegsiter = true;
 
+			etrName.IsEnabled = false;
+			btnRegister.IsEnabled = false;
 			lblApproach.IsVisible = true;
 		}
 

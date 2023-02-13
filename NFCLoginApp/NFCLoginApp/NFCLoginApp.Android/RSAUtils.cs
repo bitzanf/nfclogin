@@ -4,6 +4,7 @@ using Android.OS;
 using Android.Runtime;
 using Android.Views;
 using Android.Widget;
+using PemUtils;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,6 +17,16 @@ namespace NFCLoginApp.Droid
 {
 	public class RSAUtils
 	{
+		public static string DER2PEM(byte[] der)
+		{
+			RSA key = RSA.Create();
+			key.ImportRSAPublicKey(der, out _);
+			using var stream = new MemoryStream();
+			using var writer = new PemWriter(stream);
+			writer.WritePublicKey(key);
+			return stream.ToString();
+		}
+
 		public static byte[] ExportPublicKey(RSAParameters parameters)
 		{
 			using (var stream = new MemoryStream())
