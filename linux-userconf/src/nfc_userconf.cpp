@@ -20,16 +20,22 @@ using std::vector;
 using std::span;
 using std::cout;
 
+//autopointer pro C string
 struct AP_MALLOC_FREE {
     void operator()(void* ptr) { free(ptr); };
 };
 using apCSTR = std::unique_ptr<char, AP_MALLOC_FREE>;
 
+/// @brief převede interní název C++ typu na čitelnou reprezentaci
+/// @param mangled typeid::name
+/// @return čitelný název
 inline apCSTR CXADemangle(const char* mangled) {
     int status;
     return apCSTR(abi::__cxa_demangle(mangled, 0, 0, &status));
 }
 
+/// @brief vyžádá si od uživatele přihlášení pomocí PAM
+/// @return true při úspěšném přihlášení
 bool requireLogin() {
     char *username = getlogin();
     pam_handle_t *pamh;
@@ -46,10 +52,13 @@ bool requireLogin() {
     return pam_authenticate(pamh, 0) == PAM_SUCCESS;
 }
 
+/// @brief převede veřejný klíč z binární DER reprezentace na textovou (PEM)
+/// @param der binární veřejný klíč
+/// @return PEM string
 string DER2PEM(span<uint8_t> der) {
     EVP_PKEY *devPubKey;
     uint8_t *pDER = der.data();
-    if (d2i_PublicKey(EVP_PKEY_RSA, &devPubKey, &pDER, der.size()) == nullptr) throw OpenSSLError("Error decoding DER device key");
+    if (d2i_PublicKey(EVP_PKEY_RSA, &devPubKey, (const uint8_t**)&pDER, der.size()) == nullptr) throw OpenSSLError("Error decoding DER device key");
 
     BIO *bio = BIO_new(BIO_s_mem());
     PEM_write_bio_PUBKEY(bio, devPubKey);
@@ -63,6 +72,7 @@ string DER2PEM(span<uint8_t> der) {
     return pem;
 }
 
+/// @brief nápověda
 void Usage() {
     cout << "nfc_userconf [-<ttypath>:<baudrate>] <CMD> ...\n\n"
             "(some actions might require additional authentication)\n"
@@ -74,12 +84,15 @@ void Usage() {
             "        otherwise removes the specified fingerprint\n";
 }
 
+/// @brief výpis všech zařízení
 void List(UserConf& uc) {
     for (auto [fp, login, reg] : uc.list()) {
         cout << login << " [" << fp << "] (registered " << reg << ")\n";
     }
+    cout << "(done)\n";
 }
 
+/// @brief registrace nového zařízení
 void Register(UserConf& uc, NFCAdapter &nfc) {
     vector<uint8_t> temp;
     NFCAdapter::PacketType respType;
@@ -88,18 +101,22 @@ void Register(UserConf& uc, NFCAdapter &nfc) {
         return;
     }
 
+    //sestavíme zprávu na získání otisku zařízení
     auto &fp = uc.getFingerprint();
     auto &pk = uc.getPubKey();
     temp.assign(fp.begin(), fp.end());
     temp.push_back('|');
     temp.insert(temp.end(), pk.begin(), pk.end());
 
+    //a odešleme
     nfc.sendMessage(temp, NFCAdapter::PacketType::REGISTER);
     temp.clear();
 
+    //převezmeme odpověď s informacemi o protistraně
     respType = nfc.getResponse(temp);
     if (respType != NFCAdapter::PacketType::REGISTER) throw runtime_error{"Incorrect packet type"};
     
+    //rozdělíme na otisk a klíč a registrujeme nové zařízení
     auto split = find_if(temp.begin(), temp.end(), [](uint8_t val){ return val == '|'; });
     bool res = uc.newDevice(string(temp.begin(), split), DER2PEM({(split+1), temp.end()}));
 
@@ -107,6 +124,9 @@ void Register(UserConf& uc, NFCAdapter &nfc) {
     else cout << "Registration failed\n";
 }
 
+/// @brief vymazání zařízení
+/// @param fp otisk mazaného zařízení
+///           (je-li NULL, dotáže se pomocí NFC)
 void Remove(UserConf& uc, NFCAdapter &nfc, char* fp) {
     string sFP;
     NFCAdapter::PacketType respType;
@@ -139,7 +159,9 @@ int main_u(int argc, char** argv) {
         return 0;
     }
 
+    //načtení cesty k sériovému portu
     if (argv[1][0] == '-') {
+        //rozdělení na ':'
         auto end = argv[1] + strlen(argv[1]);
         auto sep = find_if(
             argv[1], end,
@@ -150,8 +172,8 @@ int main_u(int argc, char** argv) {
             Usage();
             return 0;
         }
-        ttyPath.assign(argv[1]+1, sep);     //pomlcka na zacatku...
-        ttyBaud = get_baud(atoi(sep+1));    //uz od prirody konci \0
+        ttyPath.assign(argv[1]+1, sep);     //pomlčka na začátku...
+        ttyBaud = get_baud(atoi(sep+1));    //už od přírody konci \0
         if (ttyBaud == -1) {
             cout << "Error: incorrect baud rate: " << sep + 1 << "\n\n";
             Usage();
@@ -161,25 +183,30 @@ int main_u(int argc, char** argv) {
     }
 
     UserConf uc;
-    NFCAdapter nfc(ttyPath.c_str(), ttyBaud, 50 /* *0,1s => 5s */);
 
+    //načtení typu operace a provedení
     if (!strcmp("list", argv[optidx])) {
         cout << "Listing registered devices...\n";
         List(uc);
-    } else if (!strcmp("register", argv[optidx])) {
-        cout << "Registering a new device...\n";
-        Register(uc, nfc);
-    } else if (!strcmp("remove", argv[optidx])) {
-        cout << "Removing a device...\n";
-        Remove(uc, nfc, argc > optidx ? argv[optidx+1] : nullptr);
     } else {
-        cout << "Error: unknown argument: " << argv[optidx] << "\n\n";
-        Usage();
+        NFCAdapter nfc(ttyPath.c_str(), ttyBaud, 50 /* *0,1s => 5s */);
+
+        if (!strcmp("register", argv[optidx])) {
+            cout << "Registering a new device...\n";
+            Register(uc, nfc);
+        } else if (!strcmp("remove", argv[optidx])) {
+            cout << "Removing a device...\n";
+            Remove(uc, nfc, argc > (optidx + 1) ? argv[optidx+1] : nullptr);
+        } else {
+            cout << "Error: unknown argument: " << argv[optidx] << "\n\n";
+            Usage();
+        }
     }
 
     return 0;
 }
 
+/// @brief obalovač se zachytáváním výjimek
 int main(int argc, char** argv) {
     try {
         return main_u(argc, argv);
@@ -187,9 +214,8 @@ int main(int argc, char** argv) {
         int status;
         auto mangled = typeid(e).name();
         auto demangled = CXADemangle(mangled);
+        //hezké vytišténí zachycené chyby
         std::cerr << "\x1b[31;1mE \x1b[37;1m" << (!demangled ? mangled : demangled.get()) << "\x1b[0m: " << e.what() << '\n';
         return -1;
     }
 }
-
-//https://stackoverflow.com/questions/3649278/how-can-i-get-the-class-name-from-a-c-object

@@ -2,6 +2,10 @@
 #include <string.h>
 #include "OSSLUtils.hpp"
 
+/// @brief odstraní ze stringu prefix
+/// @param pre prefix, který se má odstranit
+/// @param str string, ze kterého se odstraňuje prefix
+/// @return pointer na začátek dat bez prefixu
 const char* rmprefix(const char* pre, const char* str) {
     int prelen = strlen(pre);
     if (strncmp(pre, str, prelen) == 0) {

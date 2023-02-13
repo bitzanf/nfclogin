@@ -11,6 +11,7 @@ using namespace std;
 SQLite3Error::SQLite3Error(const char *msg, sqlite3 *db) : runtime_error(fmt::format("{} - {}", msg, sqlite3_errmsg(db))) {}
 
 UserConf::UserConf() {
+    //naćteme soukromý klíč (a pokud není, vytvoříme ho)
     try {
         keypair = loadPEMKey(configPath + "private.pem", false);
     } catch (system_error &e) {
@@ -20,9 +21,11 @@ UserConf::UserConf() {
         } else throw e;
     }
 
+    //vytvoříme veřejný klíč
     makePublicDER();
     fingerprint = makeFingerprint(keypair);
 
+    //a nachystáme databázi
     int sqlEC = sqlite3_open((configPath + "clients.db").c_str(), &db);
     if (sqlEC) throw SQLite3Error("Error opening database", db);
 
@@ -36,21 +39,25 @@ UserConf::UserConf() {
         NULL, NULL, NULL
     ); if (sqlEC) throw SQLite3Error("SQL Error", db);
 
+    //existuje zařízení?
     sqlEC = sqlite3_prepare_v2(db,
         "SELECT EXISTS (SELECT 1 FROM clients WHERE fingerprint = ?);",
         -1, &sqlExists, NULL
     ); if (sqlEC) throw SQLite3Error("SQL Error", db);
 
+    //smazání určitého zařízení
     sqlEC = sqlite3_prepare_v2(db,
         "DELETE FROM clients WHERE fingerprint = ?;",
         -1, &sqlDelete, NULL
     ); if (sqlEC) throw SQLite3Error("SQL Error", db);
 
+    //nové zařízení
     sqlEC = sqlite3_prepare_v2(db,
         "INSERT INTO clients (fingerprint, pubkey, login, registered) VALUES (?, ?, ?, unixepoch());",
         -1, &sqlInsert, NULL
     ); if (sqlEC) throw SQLite3Error("SQL Error", db);
 
+    //získání informací o zařízeních (pro výpis)
     sqlEC = sqlite3_prepare_v2(db,
         "SELECT fingerprint, login, DATETIME(registered, 'unixepoch', 'localtime') FROM clients;",
         -1, &sqlSelect, NULL
@@ -94,6 +101,7 @@ UserConf::~UserConf() {
     keypair = NULL;
 
     if (publicKeyDER.data()) OPENSSL_free(publicKeyDER.data());
+    publicKeyDER = {(uint8_t*)nullptr, 0};
 }
 
 bool UserConf::newDevice(const string &devFP, const string &devPK) {
@@ -144,8 +152,6 @@ void UserConf::makePublicDER() {
 
     publicKeyDER = {pubkey, pkLen};
 }
-
-//https://github.com/openssl/openssl/blob/master/demos/pkey/EVP_PKEY_RSA_keygen.c
 
 UserConf::DevIter UserConf::DevIter::operator++() {
     if (sql) {

@@ -10,15 +10,17 @@ using namespace std;
 using namespace osslUtils;
 
 CryptoLoginManager::CryptoLoginManager() {
+    //načteme databázi zařízení
     int sqlEC = sqlite3_open_v2((configPath + "clients.db").c_str(), &db, SQLITE_OPEN_READONLY, NULL);
     if (sqlEC) {
         throw SQLite3Error("Error opening database", db);
     }
 
-    privateKey = loadPEMKey(configPath + "private.pem", false);
-    publicKey = loadPEMKey(configPath + "public.pem", true);
-    fingerprint = makeFingerprint(publicKey);
+    //načteme klíće
+    privateKeyPair = loadPEMKey(configPath + "private.pem", false);
+    fingerprint = makeFingerprint(privateKeyPair);
 
+    //a připravíme si SQL dotaz
     if (sqlite3_prepare_v2(db,
         "SELECT fingerprint, pubkey, login, datetime(registered, 'unixepoch', 'localtime') as registered "
         "FROM clients WHERE fingerprint = ? LIMIT 1;",
@@ -36,10 +38,8 @@ CryptoLoginManager::~CryptoLoginManager() {
         else db = NULL;
     }
 
-    if (privateKey) EVP_PKEY_free(privateKey);
-    if (publicKey) EVP_PKEY_free(publicKey);
-    privateKey = NULL;
-    publicKey = NULL;
+    if (privateKeyPair) EVP_PKEY_free(privateKeyPair);
+    privateKeyPair = NULL;
 }
 
 CryptoLoginManager::Device CryptoLoginManager::getDevice(const std::string& devFP) {
@@ -97,7 +97,7 @@ vector<uint8_t> CryptoLoginManager::Device::getSecret() {
 bool CryptoLoginManager::Device::checkSecret(const std::vector<uint8_t> &_secret) {
     vector<uint8_t> decrypted;
     size_t decryptedLen;
-    ap::PKEYCTX ctx = ap::PKEYCTX(EVP_PKEY_CTX_new_from_pkey(NULL, clmg.privateKey, NULL));
+    ap::PKEYCTX ctx = ap::PKEYCTX(EVP_PKEY_CTX_new_from_pkey(NULL, clmg.privateKeyPair, NULL));
 
     if (!ctx) throw OpenSSLError("Error creating EVP context");
     if (EVP_PKEY_decrypt_init(ctx.get()) <= 0) throw OpenSSLError("Error initializing decryption");

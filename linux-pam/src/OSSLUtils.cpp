@@ -19,7 +19,7 @@ EVP_PKEY* loadPEMKey(const std::string& file, bool isPublic) {
     else keyType = EVP_PKEY_KEYPAIR;
 
     ap::FILE f = ap::FILE(fopen(file.c_str(), "r"));
-    if (!f) throw std::system_error(errno, std::generic_category(), "Error opening key file");
+    if (!f) throw std::system_error(errno, std::generic_category(), "Error opening key file \"" + file + '"');
 
     ap::ODCTX dctx = ap::ODCTX(OSSL_DECODER_CTX_new_for_pkey(&key, "PEM", NULL, "RSA", keyType, NULL, NULL));
     if (!dctx) throw OpenSSLError("Error creating decoder context");
@@ -61,7 +61,7 @@ std::string makeFingerprint(EVP_PKEY *pubkey) {
 
 };
 
-
+//asi nikdy nepochopím důvod / smysl...
 int get_baud(int baud) {
     switch (baud) {
     case 9600:

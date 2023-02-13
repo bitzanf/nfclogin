@@ -14,6 +14,7 @@ namespace osslUtils {
         OpenSSLError(const char* msg);
     };
 
+    /// @brief autopointers
     namespace ap {
         struct ODCTX_FREE {
             void operator()(OSSL_DECODER_CTX *ctx) { OSSL_DECODER_CTX_free(ctx); }
@@ -41,14 +42,23 @@ namespace osslUtils {
         using BGNM    = std::unique_ptr<BIGNUM          , BN_FREE>;
     }
 
-    /// @brief computes the public key fingerprint
-    /// @return SHA1 hash, string of %02x values
+    /// @brief spočítá otisk veřejného klíče
+    /// @return SHA1 hash, string "%02x" hodnot parametru klíče N
     std::string makeFingerprint(EVP_PKEY *pubkey);
 
+    /// @brief načte klíč formátu PEM ze souboru
+    /// @param file cesta k souboru
+    /// @param isPublic je načítaný klíč veřejný?
+    /// @return načtený klíč
     EVP_PKEY* loadPEMKey(const std::string& file, bool isPublic);
+
+    /// @return chybový string z OpenSSL
     std::string getOpenSSLError();
 }
 
+/// @brief nechutná hrůza, vrací baud rate (rychlost sériového portu) jako definovanou hodnotu z číselné hodnoty
+/// @param baud číselná hodnota rychlosti (např. 9600)
+/// @return definovaná hodnota B* (z termios.h) odpovídající číslu (např. B9600)
 int get_baud(int baud);
 
 #endif

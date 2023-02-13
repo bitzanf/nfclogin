@@ -24,7 +24,7 @@ public:
     /// @return local device fingerprint
     inline const std::string& getFingerprint() { return fingerprint; };
 
-    /// @return PEM local public key string
+    /// @return local public key
     inline const auto& getPubKey() { return publicKeyDER; };
 
     /// @brief registers a new device under the current user
@@ -43,6 +43,7 @@ public:
 
     class DevList;
 
+    /// @brief iterator to get all devices (for compatability with ranged for loops)
     struct DevIter {
         DevIter() : sql(nullptr) {};
         DevIter operator++();
@@ -54,6 +55,7 @@ public:
         sqlite3_stmt *sql;
     };
 
+    /// @brief list of all devices
     class DevList {
     public:
         DevIter begin();
@@ -65,6 +67,7 @@ public:
         DevList(UserConf& _uc) : uc(_uc) {};
     };
 
+    /// @brief get device list
     inline DevList list() { return DevList{*this}; };
 
 private:
@@ -75,17 +78,25 @@ private:
     const unsigned int keyBits = 1024;
 
     /// @brief public key fingerprint, used for unique identification of the pc
-    ///        (SHA1 hash, string of {:02x} values)
+    ///        (SHA1 hash, string of {:02x} values (key parameter N))
     std::string fingerprint;
 
     /// @brief DER representation of the public key
     std::span<uint8_t> publicKeyDER;
 
+    /// @brief device database
     sqlite3 *db;
+
+    /// @brief various SQL statements for database manipulation
     sqlite3_stmt *sqlInsert, *sqlDelete, *sqlExists, *sqlSelect;
+
+    /// @brief local private key
     EVP_PKEY *keypair;
 
+    /// @brief generate private key
     void makeKeyPair();
+
+    /// @brief calculate public key
     void makePublicDER();
 };
 

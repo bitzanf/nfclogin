@@ -1,11 +1,16 @@
 #ifndef _BASE64_HPP
 #define _BASE64_HPP
 
+//ukradeno z internetu :)
+
 #include <string>
 #include <vector>
 #include <array>
 
+/// @brief dovolené znaky base64
 extern const char base64chars[];
+
+/// @brief lookup table pro převod mezi binární reprezentací a base64
 struct base64LUT_t {
     base64LUT_t() {
         for (int i = 0; i < 256; i++) _base64LUT[i] = -1;
@@ -20,7 +25,11 @@ private:
 extern const base64LUT_t base64LUT;
 
 
-
+/// @brief převádí binární data na base64 string
+/// @tparam It typ vstupního iterátoru
+/// @param begin začátek datové oblasti
+/// @param end konec datové oblasti
+/// @return base64 string
 template <std::input_iterator It>
 std::string base64_encode(const It begin, const It end) {
     std::string out;
@@ -39,6 +48,11 @@ std::string base64_encode(const It begin, const It end) {
     return out;
 }
 
+/// @brief převádí base64 string da binární data
+/// @tparam It typ vstupního iterátoru
+/// @param begin začátek base64 textu
+/// @param end konec base64 textu
+/// @return binární data
 template <std::input_iterator It>
 std::vector<uint8_t> base64_decode(const It begin, const It end) {
     std::vector<uint8_t> out;

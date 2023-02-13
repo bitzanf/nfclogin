@@ -101,8 +101,10 @@ void NFCAdapter::sendACKorNAK(bool success) {
 }
 
 bool NFCAdapter::ping() {
-    return true;
-    #pragma GCC message "!! IMPLEMENTOVAT !!"
+    uint8_t response;
+    if (write(fd, "\x05", 1) == -1) throw SENDERR;
+    if (!getNBytes(&response, 1)) return false;
+    return response == 0x06;
 }
 
 bool NFCAdapter::waitForACK() {
@@ -117,23 +119,33 @@ bool NFCAdapter::processMSG() {
     auto inserter = std::back_inserter(bfr);
     uint16_t len;
 
+    //načteme hlavičku
     if (getNBytes(inserter, 5)) {
+        //ID paketu
         if (bfr[0] == inPktID + 1) {
+            //typ paketu
             inPktType = (PacketType)bfr[1];
+            //délka dat
             len = ((uint16_t)bfr[2] << 8) | bfr[3];
 
+            //služební byte hlavičky
             if (bfr[4] == 0x02) {
                 bfr.clear();
 
+                //načtení dat
                 if (getNBytes(inserter, len)) {
+                    //data jsou base64, musíme je dekódovat
                     rawData = base64_decode(bfr.begin(), bfr.end());
                     uint16_t localCRC = CRC16(rawData.begin(), rawData.end());
 
+                    //načtení patičky
                     bfr.clear();
                     if (getNBytes(inserter, 4)) {
+                        //služební byte patičky
                         if (bfr[0] == 0x03) {
                             uint16_t remoteCRC = ((uint16_t)bfr[1] << 8) | bfr[2];
 
+                            //sedí kontrolní součet?
                             if (remoteCRC == localCRC && bfr[3] == 0x04) {
                                 sendACKorNAK(true);
                                 return true;
@@ -150,12 +162,15 @@ bool NFCAdapter::processMSG() {
 }
 
 bool NFCAdapter::transmit() {
+    //zakódujeme data do base64
     std::string base64 = base64_encode(rawData.begin(), rawData.end());
     bool success;
     int iters = 0;
     
+    //pokud odesílání selže, několikrát opakujeme (až do maxSendRetryCount)
     outPktID++;
     do {
+        //odešleme hlavičku, data, patičku
         sendHeader(base64.length());
         if (write(fd, base64.data(), base64.length()) == -1) throw SENDERR;
         sendChecksum();
@@ -166,15 +181,18 @@ bool NFCAdapter::transmit() {
 
 bool NFCAdapter::receive() {
     uint8_t mark;
-    int iterations = 0;
+    int iters = 0;
     int messageReads = 0;
 
-    while (iterations++ < maxReadsDumped && messageReads < maxReceiveRetryCount) {
+    //několikrát načítá úplný začátek zprávy
+    //zahodí až maxReadsDumped načtených bytů (kvůli synchronizaci na značku SOH)
+    while (iters++ < maxReadsDumped && messageReads < maxReceiveRetryCount) {
         if (getNBytes(&mark, 1)) {
             if (mark == 0x01) {
+                //chytili jsme značku začátku zprávy, načteme ji
                 bool res = processMSG();
                 if (!res) {
-                    iterations = 0;
+                    iters = 0;
                     messageReads++;
                     continue;
                 }

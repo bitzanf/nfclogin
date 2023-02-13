@@ -12,6 +12,14 @@ public:
     InvalidConfigurationException(String msg) : std::logic_error(msg) {};
 };
 
+/*
+ * konfigurace PAM modulu
+ * validní možnosti:
+ *  - tty=<cesta>
+ *  - baudrate=<rychlost sériové linky>
+ *  - parallel=<název PAM služby, která se spustí souběžně s NFC přihlašováním>
+ *  - timeout=<násobky 0,1s; maximální doba čekání na odpověď po TTY>
+*/
 struct PamConfig {
     PamConfig() {};
     PamConfig(const int argc, const char** argv) { configure(argc, argv); };
@@ -21,6 +29,8 @@ struct PamConfig {
     std::optional<std::string> parallelService;
     std::string ttyPath;
     speed_t ttySpeed = B0;
+
+    /// @brief násobky 0,1s !
     int timeout = 0;
 };
 
