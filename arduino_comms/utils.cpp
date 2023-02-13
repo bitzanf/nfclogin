@@ -3,6 +3,18 @@
 int base64LUT[256];
 const char base64chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+//F0 6D 65 6F 77
+byte APDU[] = {
+    0x00, /* CLA */
+    0xA4, /* INS */
+    0x04, /* P1  */
+    0x00, /* P2  */
+    0x05, /* Length of AID  */
+    0xF0, 0x6D, 0x65, 0x6F, 0x77,   /* AID */
+    0x00  /* Le  */
+};
+byte lenAPDU = sizeof(APDU);
+
 //CRC16/XMODEM
 uint16_t CRC16(byte *bfr, int len) {
     static const uint16_t CRC16POLYNOMIAL = 0x1021;
@@ -73,6 +85,7 @@ decoded::decoded(byte* b64, uint16_t b64len) {
 }
 
 decoded::decoded(decoded&& other) {
+    this->~decoded();
     msg = other.msg;
     len = other.len;
 
@@ -83,6 +96,15 @@ decoded::decoded(decoded&& other) {
 decoded::~decoded() {
     if (len >= 0) free(msg);
     len = -1;
+}
+
+decoded &decoded::operator=(decoded &&other) {
+    this->~decoded();
+    msg = other.msg;
+    len = other.len;
+
+    other.msg = 0;
+    other.len = -1;
 }
 
 decoded::operator bool() {

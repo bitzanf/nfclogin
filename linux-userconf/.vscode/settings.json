@@ -72,7 +72,7 @@
     "cmake.debugConfig": {
         "args": [
             "-/dev/ttyACM0:9600",
-            "list"
+            "register"
         ]
     }
 }

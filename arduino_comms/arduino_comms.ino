@@ -2,6 +2,7 @@
     
 #define LED_PIN 13
 
+//inicializace různých věcí
 void setup() {
     pinMode(LED_PIN, OUTPUT);
     base64LUT_init();
@@ -29,17 +30,18 @@ void setup() {
     nfc.SAMConfig();
 
     while (!Serial);
-    Serial.println("Initialized");
 }
 
-void loop2() {
+//zpracování komunikace sériové linky
+void loop() {
     if (Serial.available() > 0) {
         int mark = Serial.read();
         switch (mark) {
-            case 0x01:
+            case 0x01:  //SOH
+                msgbfr[0] = 1;
                 processMessage();
                 break;
-            case 0x05:
+            case 0x05:  //ENQ (=ping)
                 Serial.write(0x06);
                 break;
 #ifdef DEBUG
@@ -51,48 +53,4 @@ void loop2() {
     }
 
     delay(10);
-}
-
-byte apdu[] = {
-    0x00, /* CLA */
-    0xA4, /* INS */
-    0x04, /* P1  */
-    0x00, /* P2  */
-    0x05, /* Length of AID  */
-    0xF2, 0x22, 0x22, 0x22, 0x22,   /* AID */
-    0x00  /* Le  */
-};
-
-void loop() {
-    byte resp[256];
-    byte resplen;
-    bool led = false;
-
-    if (Serial.available()) {
-        int c = Serial.read();
-        if (c == 'p') {
-            Serial.write("pong\n");
-        } else if (c == 's') {
-            Serial.write("Waiting for card...\n");
-            if (nfc.inListPassiveTarget()) {
-                Serial.write("Success\n");
-                resplen = 256;
-
-                if(nfc.inDataExchange(apdu, sizeof(apdu), resp, &resplen)) {
-                    Serial.write("Got response (");
-                    Serial.print(resplen);
-                    Serial.write(" bytes): ");
-                    for (int i = 0; i < resplen; i++) {
-                        Serial.print(resp[i], HEX);
-                        Serial.write(' ');
-                    }
-                } else {
-                    Serial.write("inDataExchange failed\n");
-                }
-            } else {
-                Serial.write("Nothing found\n");
-            }
-        }
-    }
-    delay(50);
 }

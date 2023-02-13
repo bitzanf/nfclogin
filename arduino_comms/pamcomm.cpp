@@ -1,12 +1,11 @@
 #include <PN532_HSU.h>
 #include "pamcomm.h"
-#include "apdu.h"
 
 #define RESPBFR_LEN UINT8_MAX
 
-byte msgbfr[2048], temp[1024];
+byte msgbfr[2048];
 byte ttyID, nfcID = 1;
-uint16_t msgLen, tempLen;
+uint16_t msgLen;
 
 uint8_t responseLength = RESPBFR_LEN;
 uint8_t response[RESPBFR_LEN];
@@ -32,7 +31,7 @@ bool nfcSendAPDU(byte *apdu, byte apduLen) {
         responseLength = RESPBFR_LEN;
         //phone communicating
         if (nfc.inDataExchange(apdu, apduLen, response, &responseLength)) {
-            int msglen = base64_encode(response, responseLength, msgbfr+6); // 6 = delka hlavicky
+            int msglen = base64_encode(response, responseLength-2, msgbfr+6); // 6 = delka hlavicky; 2 = delka SELECT_OK_SW
             
             //nadhera...
             msghdr *hdr = (msghdr*)msgbfr;
@@ -42,7 +41,9 @@ bool nfcSendAPDU(byte *apdu, byte apduLen) {
 
             hdr->payload_len.u16(msglen);
             hdr->id = nfcID++;
-            ftr->crc16.u16(CRC16(response, responseLength));
+            ftr->crc16.u16(CRC16(response, responseLength-2));
+            
+            msgLen = msglen + 10;
 
             return true;
         }
@@ -54,31 +55,31 @@ bool nfcSendAPDU(byte *apdu, byte apduLen) {
 void nfcAuth() {
     msghdr *hdr = (msghdr*)msgbfr;
     msgftr *ftr = (msgftr*)(msgbfr + 6 + hdr->payload_len.u16());
-    tempLen = base64_decode(msgbfr+6, hdr->payload_len.u16(), temp);
-    uint16_t crc = CRC16(temp, tempLen);
+    decoded msg{msgbfr+6, hdr->payload_len.u16()};
+    uint16_t crc = CRC16(msg.msg, msg.len);
     if (crc != ftr->crc16.u16()) {
         sendACKorNAK(false);
         return;
     }
     sendACKorNAK(true);
 
-    //odesleme SELECT APDU, dostaneme zpet fingerprint telefonu
-    if (!nfcSendAPDU(loginAPDU, sizeof(loginAPDU))) return;
+    //odesleme SELECT APDU, dostaneme zpet fingerprint telefonu + OK
+    if (!nfcSendAPDU(APDU, lenAPDU)) return;
     Serial.write(msgbfr, msgLen+10);    //10 bytu overhead
     Serial.read(); Serial.read();   // ACK
 
     
     //odesleme telefonu fingerprint pocitace
     responseLength = RESPBFR_LEN;
-    nfc.inDataExchange(temp, tempLen, response, &responseLength);
+    nfc.inDataExchange(msg.msg, msg.len, response, &responseLength);
 
     //nacteme packet s autentifikacnimi daty
     while (Serial.available() == 0);
     Serial.readBytes(msgbfr, 6);
     Serial.readBytes(msgbfr+6, hdr->payload_len.u16() + 4);
 
-    tempLen = base64_decode(msgbfr+6, hdr->payload_len.u16(), temp);
-    crc = CRC16(temp, tempLen);
+    msg = decoded{msgbfr+6, hdr->payload_len.u16()};
+    crc = CRC16(msg.msg, msg.len);
     if (crc != ftr->crc16.u16()) {
         sendACKorNAK(false);
         return;
@@ -87,37 +88,80 @@ void nfcAuth() {
 
     //prevezmeme pretransformovana data
     responseLength = RESPBFR_LEN;
-    nfc.inDataExchange(temp, tempLen, response, &responseLength);
-    if (responseLength > 0) {   //pokud se zarizeni v telefonu nenalezlo, data se ignoruji
-        msgLen = base64_encode(response, responseLength, msgbfr+6);
+    nfc.inDataExchange(msg.msg, msg.len, response, &responseLength);
+    if (responseLength > 2) {   //pokud se zarizeni v telefonu nenalezlo, data se ignoruji (vrati se UNKNOWN_CMD_SW)
+        msgLen = base64_encode(response, responseLength-2, msgbfr+6);
         hdr->id = nfcID++;
         hdr->payload_len.u16(msgLen);
-        ftr->crc16.u16(CRC16(response, responseLength));
+
+        ftr = (msgftr*)(msgbfr + 6 + msgLen);
+        ftr->init();
+        ftr->crc16.u16(CRC16(response, responseLength-2));
     }
-    Serial.write(msgbfr, msgLen+10);
+    Serial.write(msgbfr, msgLen);
     Serial.read(); Serial.read();   // ACK
 }
 
 void nfcRegister() {
+    digitalWrite(LED_BUILTIN, HIGH);
     msghdr *hdr = (msghdr*)msgbfr;
     msgftr *ftr = (msgftr*)(msgbfr + 6 + hdr->payload_len.u16());
-    tempLen = base64_decode(msgbfr+6, hdr->payload_len.u16(), temp);
-    uint16_t crc = CRC16(temp, tempLen);
+    decoded msg{msgbfr+6, hdr->payload_len.u16()};
+    uint16_t crc = CRC16(msg.msg, msg.len);
     if (crc != ftr->crc16.u16()) {
+        //chybový stav, 1 bliknutí
+        //nesedí kontrolní součet
         sendACKorNAK(false);
+        delay(300);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(200);
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(200);
+        digitalWrite(LED_BUILTIN, LOW);
         return;
     }
     sendACKorNAK(true);
 
     //odesleme SELECT APDU, dostaneme zpet fingerprint telefonu s jeho klicem
-    if (!nfcSendAPDU(registerAPDU, sizeof(registerAPDU))) return;
+    if (!nfcSendAPDU(APDU, lenAPDU)) {
+        //chybový stav, 2 bliknutí
+        //chyba v komunikaci (telefon neodpovídá)
+        delay(300);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(200);
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(200);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(200);
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(200);
+        digitalWrite(LED_BUILTIN, LOW);
+        return;
+    }
     Serial.write(msgbfr, msgLen+10);    //10 bytu overhead
     Serial.read(); Serial.read();   // ACK
 
     
     //odesleme telefonu fingerprint pocitace
     responseLength = RESPBFR_LEN;
-    nfc.inDataExchange(temp, tempLen, response, &responseLength);
+    if (!nfc.inDataExchange(msg.msg, msg.len, response, &responseLength)) {
+        //chybový stav, 3 bliknutí
+        //chyba v komunikaci (telefon neodpovídá)
+        delay(300);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(200);
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(200);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(200);
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(200);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(200);
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(200);
+    }
+    digitalWrite(LED_BUILTIN, LOW);
 }
 
 bool ledState = false;
